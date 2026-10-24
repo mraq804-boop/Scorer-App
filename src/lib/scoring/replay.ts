@@ -103,41 +103,99 @@ function startInnings(ctx: Context, event: Extract<MatchEvent, { type: "innings_
 function applyDelivery(ctx: Context, event: DeliveryEvent): void {
   const innings = currentInnings(ctx.state);
   if (innings === null) throw new EngineError("no_innings");
-  if (event.kind !== "legal") return;
-  scoreLegalBall(ctx, innings, event);
+  if (event.kind === "wide") scoreWide(ctx, innings, event);
+  else if (event.kind === "noball") scoreNoBall(ctx, innings, event);
+  else scoreLegalBall(ctx, innings, event);
 }
 
 function scoreLegalBall(ctx: Context, innings: InningsState, event: DeliveryEvent): void {
   const over = openOver(ctx, innings, event.bowler);
   const batter = batterLineFor(innings, event.striker);
   const bowler = bowlerLineFor(innings, event.bowler);
-  const offBat = event.runsAs === "bat" ? event.runs : 0;
+  const offBat = runsOffBat(event);
 
   innings.runs += event.runs;
   over.summary.runs += event.runs;
   innings.legalBalls += 1;
+  innings.freeHit = false;
   batter.balls += 1;
   bowler.legalBalls += 1;
 
-  batter.runs += offBat;
+  creditBatter(batter, event);
   if (offBat === 0) batter.dots += 1;
-  if (event.boundary && event.runsAs === "bat") {
-    if (event.runs === 4) batter.fours += 1;
-    else if (event.runs === 6) batter.sixes += 1;
-  }
-
-  if (event.runsAs === "bye") innings.extras.byes += event.runs;
-  else if (event.runsAs === "legbye") innings.extras.legByes += event.runs;
+  creditByes(innings, event);
 
   chargeBowler(over, bowler, offBat);
   if (offBat === 0) bowler.dots += 1;
 
-  if (event.runs % 2 !== 0) swapEnds(innings);
-  if (innings.legalBalls % ctx.state.rules.ballsPerOver === 0) {
-    swapEnds(innings);
-    innings.bowler = null;
-    closeOver(ctx, innings);
+  rotateStrike(innings, event.runs);
+  endOverIfComplete(ctx, innings);
+}
+
+function scoreWide(ctx: Context, innings: InningsState, event: DeliveryEvent): void {
+  const over = openOver(ctx, innings, event.bowler);
+  const bowler = bowlerLineFor(innings, event.bowler);
+  const total = event.penalty + event.runs;
+
+  innings.runs += total;
+  over.summary.runs += total;
+  innings.extras.wides += total;
+  bowler.wides += 1;
+  chargeBowler(over, bowler, total);
+
+  rotateStrike(innings, event.runs);
+  if (!ctx.state.rules.wideRebowled) {
+    innings.legalBalls += 1;
+    bowler.legalBalls += 1;
+    endOverIfComplete(ctx, innings);
   }
+}
+
+function scoreNoBall(ctx: Context, innings: InningsState, event: DeliveryEvent): void {
+  const over = openOver(ctx, innings, event.bowler);
+  const batter = batterLineFor(innings, event.striker);
+  const bowler = bowlerLineFor(innings, event.bowler);
+
+  innings.runs += event.penalty + event.runs;
+  over.summary.runs += event.penalty + event.runs;
+  innings.extras.noBalls += event.penalty;
+  batter.balls += 1;
+  bowler.noBalls += 1;
+
+  creditBatter(batter, event);
+  creditByes(innings, event);
+  chargeBowler(over, bowler, event.penalty + runsOffBat(event));
+
+  if (ctx.state.rules.freeHit) innings.freeHit = true;
+  rotateStrike(innings, event.runs);
+}
+
+function runsOffBat(event: DeliveryEvent): number {
+  return event.runsAs === "bat" ? event.runs : 0;
+}
+
+function creditBatter(batter: BatterLine, event: DeliveryEvent): void {
+  batter.runs += runsOffBat(event);
+  if (event.boundary && event.runsAs === "bat") {
+    if (event.runs === 4) batter.fours += 1;
+    else if (event.runs === 6) batter.sixes += 1;
+  }
+}
+
+function creditByes(innings: InningsState, event: DeliveryEvent): void {
+  if (event.runsAs === "bye") innings.extras.byes += event.runs;
+  else if (event.runsAs === "legbye") innings.extras.legByes += event.runs;
+}
+
+function rotateStrike(innings: InningsState, runs: number): void {
+  if (runs % 2 !== 0) swapEnds(innings);
+}
+
+function endOverIfComplete(ctx: Context, innings: InningsState): void {
+  if (innings.legalBalls % ctx.state.rules.ballsPerOver !== 0) return;
+  swapEnds(innings);
+  innings.bowler = null;
+  closeOver(ctx, innings);
 }
 
 function openOver(ctx: Context, innings: InningsState, bowler: string): OpenOver {
