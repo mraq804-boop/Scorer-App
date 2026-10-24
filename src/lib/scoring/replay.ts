@@ -1,4 +1,4 @@
-import { EngineError, defaultRules, otherSide } from "./rules";
+import { EngineError, allOutWickets, bowlerQuota, defaultRules, otherSide } from "./rules";
 import type {
   BatterLine,
   BowlerLine,
@@ -8,12 +8,13 @@ import type {
   MatchEvent,
   MatchState,
   OverSummary,
+  Result,
   Rules,
   Wicket,
 } from "./types";
 
 type OpenOver = { summary: OverSummary; bowlers: string[]; charged: number };
-type Context = { state: MatchState; over: OpenOver | null };
+type Context = { state: MatchState; over: OpenOver | null; lastOverBowlers: string[]; manualTarget: number | null };
 type Dismissal = NonNullable<BatterLine["out"]>;
 
 const BOWLER_WICKETS: ReadonlySet<DismissalKind> = new Set(["bowled", "caught", "lbw", "stumped", "hit_wicket"]);
@@ -34,7 +35,7 @@ function emptyState(): MatchState {
 }
 
 export function replay(events: readonly MatchEvent[]): MatchState {
-  const ctx: Context = { state: emptyState(), over: null };
+  const ctx: Context = { state: emptyState(), over: null, lastOverBowlers: [], manualTarget: null };
   for (const event of [...events].sort((a, b) => a.seq - b.seq)) apply(ctx, event);
   return ctx.state;
 }
@@ -71,11 +72,9 @@ function apply(ctx: Context, event: MatchEvent): void {
     case "delivery":
       applyDelivery(ctx, event);
       return;
-    case "bowler_changed": {
-      const innings = currentInnings(state);
-      if (innings !== null) innings.bowler = event.player;
+    case "bowler_changed":
+      changeBowler(ctx, event);
       return;
-    }
     case "strike_swapped": {
       const innings = currentInnings(state);
       if (innings !== null) swapEnds(state, innings);
@@ -86,6 +85,12 @@ function apply(ctx: Context, event: MatchEvent): void {
       return;
     case "retired":
       retire(ctx, event);
+      return;
+    case "settings_changed":
+      changeSettings(ctx, event);
+      return;
+    case "innings_ended":
+      endInnings(ctx, event);
       return;
     default:
       return;
@@ -119,6 +124,71 @@ function startInnings(ctx: Context, event: Extract<MatchEvent, { type: "innings_
   });
   state.status = "in_progress";
   ctx.over = null;
+  ctx.lastOverBowlers = [];
+}
+
+function endInnings(ctx: Context, event: Extract<MatchEvent, { type: "innings_ended" }>): void {
+  const { state } = ctx;
+  const innings = state.innings.find((candidate) => candidate.number === event.innings);
+  if (innings === undefined) throw new EngineError("no_innings");
+  if (innings.ended !== null) return;
+
+  innings.ended = event.reason;
+  if (innings.number === 1) {
+    state.status = "innings_break";
+    refreshTarget(ctx);
+    return;
+  }
+  state.status = "complete";
+  state.result = matchResult(state, innings);
+}
+
+function refreshTarget(ctx: Context): void {
+  const first = ctx.state.innings.find((innings) => innings.number === 1);
+  const computed = first !== undefined && first.ended !== null ? first.runs + 1 : null;
+  ctx.state.target = ctx.manualTarget ?? computed;
+}
+
+function matchResult(state: MatchState, chase: InningsState): Result | null {
+  const { target, rules } = state;
+  if (target === null) return null;
+  if (chase.runs >= target) {
+    return {
+      kind: "won_by_wickets",
+      winner: chase.battingTeam,
+      wickets: allOutWickets(rules, chase.battingTeam) - chase.wickets,
+      ballsLeft: rules.oversPerInnings * rules.ballsPerOver - chase.legalBalls,
+    };
+  }
+  if (chase.runs === target - 1) return { kind: "tie" };
+  return { kind: "won_by_runs", winner: chase.bowlingTeam, runs: target - 1 - chase.runs };
+}
+
+function changeSettings(ctx: Context, event: Extract<MatchEvent, { type: "settings_changed" }>): void {
+  const { rules } = ctx.state;
+  if (event.oversPerInnings !== undefined) rules.oversPerInnings = event.oversPerInnings;
+  if (event.playersPerSide?.A !== undefined) rules.playersPerSide.A = event.playersPerSide.A;
+  if (event.playersPerSide?.B !== undefined) rules.playersPerSide.B = event.playersPerSide.B;
+  if (event.target !== undefined) {
+    ctx.manualTarget = event.target;
+    refreshTarget(ctx);
+  }
+}
+
+function changeBowler(ctx: Context, event: Extract<MatchEvent, { type: "bowler_changed" }>): void {
+  const { state } = ctx;
+  const innings = currentInnings(state);
+  if (innings === null) return;
+  innings.bowler = event.player;
+
+  if (ctx.lastOverBowlers.includes(event.player)) {
+    state.warnings.push({ eventId: event.id, kind: "consecutive_overs", bowler: event.player });
+  }
+  const quota = bowlerQuota(state.rules);
+  const bowled = innings.bowling.find((line) => line.playerId === event.player)?.legalBalls ?? 0;
+  if (Math.floor(bowled / state.rules.ballsPerOver) >= quota) {
+    state.warnings.push({ eventId: event.id, kind: "bowler_quota", bowler: event.player, quota });
+  }
 }
 
 function applyDelivery(ctx: Context, event: DeliveryEvent): void {
@@ -247,6 +317,7 @@ function closeOver(ctx: Context, innings: InningsState): void {
   if (over !== null && over.bowlers.length === 1 && over.charged === 0) {
     bowlerLineFor(innings, over.bowlers[0]).maidens += 1;
   }
+  if (over !== null) ctx.lastOverBowlers = over.bowlers;
   ctx.over = null;
 }
 

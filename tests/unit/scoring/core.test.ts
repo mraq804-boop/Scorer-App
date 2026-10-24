@@ -299,6 +299,7 @@ describe("replay", () => {
 
   it("starts innings 2 with the other side bowling", () => {
     const m = new TestMatch();
+    m.endInnings("overs");
     m.startInnings2(["Bilal", "Zain"], "Kamran");
     const s = m.state;
     expect(s.innings).toHaveLength(2);

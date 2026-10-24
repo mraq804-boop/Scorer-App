@@ -31,6 +31,11 @@ export function bowlerQuota(rules: Rules): number {
   return Math.ceil(rules.oversPerInnings / 5);
 }
 
+export function allOutWickets(rules: Rules, side: TeamSide): number {
+  const players = rules.playersPerSide[side];
+  return rules.lastManStands ? players : players - 1;
+}
+
 export function otherSide(side: TeamSide): TeamSide {
   return side === "A" ? "B" : "A";
 }
