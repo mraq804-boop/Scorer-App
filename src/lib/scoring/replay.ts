@@ -12,6 +12,7 @@ import type {
   Rules,
   Wicket,
 } from "./types";
+import { effectiveEvents } from "./undo";
 
 type OpenOver = { summary: OverSummary; bowlers: string[]; charged: number };
 type Context = { state: MatchState; over: OpenOver | null; lastOverBowlers: string[]; manualTarget: number | null };
@@ -36,7 +37,7 @@ function emptyState(): MatchState {
 
 export function replay(events: readonly MatchEvent[]): MatchState {
   const ctx: Context = { state: emptyState(), over: null, lastOverBowlers: [], manualTarget: null };
-  for (const event of [...events].sort((a, b) => a.seq - b.seq)) apply(ctx, event);
+  for (const event of effectiveEvents(events)) apply(ctx, event);
   return ctx.state;
 }
 
@@ -194,6 +195,12 @@ function changeBowler(ctx: Context, event: Extract<MatchEvent, { type: "bowler_c
 function applyDelivery(ctx: Context, event: DeliveryEvent): void {
   const innings = currentInnings(ctx.state);
   if (innings === null) throw new EngineError("no_innings");
+  if (innings.striker !== event.striker) {
+    ctx.state.warnings.push({ eventId: event.id, kind: "strike_mismatch" });
+  }
+  innings.striker = event.striker;
+  innings.nonStriker = event.nonStriker;
+  innings.bowler = event.bowler;
   const runsBefore = innings.runs;
   const ballsBefore = innings.legalBalls;
 

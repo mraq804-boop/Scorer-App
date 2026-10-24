@@ -1,4 +1,4 @@
-import { defaultRules, deliveryDraft, replay } from "@/lib/scoring";
+import { defaultRules, deliveryDraft, replay, undoTargets } from "@/lib/scoring";
 import type {
   BallInput,
   BatterLine,
@@ -23,15 +23,6 @@ type TestMatchOptions = {
   openers?: [string, string];
   bowler?: string;
 };
-
-const UNDO_ANCHORS: ReadonlySet<MatchEvent["type"]> = new Set([
-  "delivery",
-  "retired",
-  "innings_ended",
-  "innings_started",
-  "settings_changed",
-]);
-const NEVER_UNDONE: ReadonlySet<MatchEvent["type"]> = new Set(["match_created", "player_added", "undo", "correct"]);
 
 function other(side: TeamSide): TeamSide {
   return side === "A" ? "B" : "A";
@@ -108,7 +99,7 @@ export class TestMatch {
   }
 
   undo(): void {
-    this.push({ type: "undo", targets: this.undoTargets() });
+    this.push({ type: "undo", targets: undoTargets(this.events) });
   }
 
   correct(eventId: string, patch: CorrectionPatch): void {
@@ -138,17 +129,6 @@ export class TestMatch {
     const id = this.id(name);
     if (this.events.some((e) => e.type === "player_added" && e.player.id === id)) return;
     this.push({ type: "player_added", player: { id, name, team } });
-  }
-
-  private undoTargets(): string[] {
-    const voided = new Set(this.events.flatMap((e) => (e.type === "undo" ? e.targets : [])));
-    const live = this.events.filter((e) => !voided.has(e.id));
-    const anchor = live.findLastIndex((e) => UNDO_ANCHORS.has(e.type));
-    if (anchor < 0) return [];
-    return live
-      .slice(anchor)
-      .filter((e) => !NEVER_UNDONE.has(e.type))
-      .map((e) => e.id);
   }
 }
 
