@@ -11,11 +11,14 @@ $$;
 create or replace function public.push_match_events(p_match jsonb, p_device uuid, p_events jsonb) returns int
 language plpgsql security definer set search_path = '' as $$
 declare
+  max_seq constant int := 5000;
+  max_new_matches_per_day constant int := 20;
   uid uuid := (select auth.uid());
   mid uuid;
   m public.matches;
   ev record;
   malformed boolean;
+  top_seq int;
 begin
   if uid is null then
     raise exception 'not_signed_in';
@@ -27,8 +30,9 @@ begin
     raise exception 'too_many_events';
   end if;
   begin
-    select bool_or(x.id is null or x.seq is null or x.seq < 1 or x.at is null or x.type is null or x.payload is null)
-    into malformed
+    select bool_or(x.id is null or x.seq is null or x.seq < 1 or x.at is null or x.type is null or x.payload is null),
+           max(x.seq)
+    into malformed, top_seq
     from jsonb_to_recordset(p_events)
       as x(id uuid, seq int, at timestamptz, type public.match_event_type, payload public.match_event_payload);
   exception when others then
@@ -37,10 +41,18 @@ begin
   if malformed then
     raise exception 'invalid_event';
   end if;
+  if top_seq > max_seq then
+    raise exception 'quota_exceeded';
+  end if;
 
   mid := (p_match ->> 'id')::uuid;
   select * into m from public.matches where id = mid for update;
   if not found then
+    perform pg_advisory_xact_lock(hashtextextended(uid::text, 0));
+    if (select count(*) from public.matches
+        where owner_id = uid and id <> mid and created_at > now() - interval '24 hours') >= max_new_matches_per_day then
+      raise exception 'quota_exceeded';
+    end if;
     insert into public.matches (id, code, owner_id, scoring_device, title, team_a, team_b, rules, status, summary)
     values (mid, p_match ->> 'code', uid, p_device, p_match ->> 'title', p_match ->> 'teamA', p_match ->> 'teamB',
             p_match -> 'rules', p_match ->> 'status', coalesce(p_match -> 'summary', '{}'))
@@ -144,34 +156,53 @@ language sql stable security definer set search_path = '' as $$
   where m.code = p_code and m.visibility = 'link';
 $$;
 
-create or replace function public.get_live_events(p_code text, p_after int) returns jsonb
+create or replace function public.match_events_after(p_match uuid, p_after int) returns jsonb
 language sql stable security definer set search_path = '' as $$
   select coalesce(jsonb_agg(x.event order by x.seq), '[]'::jsonb)
   from (
     select public.match_event_json(e) as event, e.seq
     from public.match_events e
-    join public.matches m on m.id = e.match_id
-    where m.code = p_code and m.visibility = 'link' and e.seq > p_after
+    where e.match_id = p_match and e.seq > p_after
     order by e.seq
     limit 1000
   ) x;
 $$;
 
+create or replace function public.get_live_events(p_code text, p_after int) returns jsonb
+language sql stable security definer set search_path = '' as $$
+  select coalesce(
+    (select public.match_events_after(m.id, p_after) from public.matches m where m.code = p_code and m.visibility = 'link'),
+    '[]'::jsonb
+  );
+$$;
+
+create or replace function public.get_owner_events(p_match uuid, p_after int) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  if not exists (select 1 from public.matches m where m.id = p_match and m.owner_id = (select auth.uid())) then
+    raise exception 'not_owner';
+  end if;
+  return public.match_events_after(p_match, p_after);
+end $$;
+
 revoke execute on function
   public.match_event_json(public.match_events),
+  public.match_events_after(uuid, int),
   public.push_match_events(jsonb, uuid, jsonb),
   public.take_over_scoring(uuid, uuid),
   public.create_claim_token(),
   public.claim_matches(text),
   public.get_live_match(text),
-  public.get_live_events(text, int)
+  public.get_live_events(text, int),
+  public.get_owner_events(uuid, int)
 from public, anon, authenticated;
 
 grant execute on function
   public.push_match_events(jsonb, uuid, jsonb),
   public.take_over_scoring(uuid, uuid),
   public.create_claim_token(),
-  public.claim_matches(text)
+  public.claim_matches(text),
+  public.get_owner_events(uuid, int)
 to authenticated;
 
 grant execute on function public.get_live_match(text), public.get_live_events(text, int) to anon, authenticated;

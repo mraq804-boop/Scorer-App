@@ -14,10 +14,10 @@ create table public.matches (
   title text not null check (char_length(title) <= 120),
   team_a text not null check (char_length(team_a) between 1 and 40),
   team_b text not null check (char_length(team_b) between 1 and 40),
-  rules jsonb not null,
+  rules jsonb not null constraint matches_rules_size check (octet_length(rules::text) <= 4096),
   status text not null check (status in ('in_progress', 'complete')),
   visibility text not null default 'link' check (visibility in ('link', 'private')),
-  summary jsonb not null default '{}',
+  summary jsonb not null default '{}' constraint matches_summary_size check (octet_length(summary::text) <= 8192),
   last_seq int not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

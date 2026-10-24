@@ -9,12 +9,23 @@ const C = { sub: "00000000-0000-0000-0000-0000000000c3" };
 const STRANGER = { sub: "00000000-0000-0000-0000-0000000000d4" };
 const GUEST = { sub: "00000000-0000-0000-0000-0000000000e5", anonymous: true };
 const OTHER_GUEST = { sub: "00000000-0000-0000-0000-0000000000f6", anonymous: true };
+const BUSY_GUEST = { sub: "00000000-0000-0000-0000-0000000000a7", anonymous: true };
+const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
 const D1 = "00000000-0000-0000-0000-00000000d001";
 const D2 = "00000000-0000-0000-0000-00000000d002";
 const AT = "2026-10-23T10:15:30.250Z";
 
 type WireEvent = { id: string; seq: number; at: string; type: string; payload: Record<string, unknown> };
-type MatchInput = ReturnType<typeof newMatch>;
+type MatchInput = {
+  id: string;
+  code: string;
+  title: string;
+  teamA: string;
+  teamB: string;
+  rules: Record<string, unknown>;
+  status: "in_progress" | "complete";
+  summary: Record<string, unknown>;
+};
 type LiveEvent = Record<string, unknown> & { id: string; seq: number; at: string; type: string };
 
 let db: PGlite;
@@ -37,7 +48,7 @@ function delivery(seq: number): WireEvent {
   });
 }
 
-function newMatch(code: string, id: string = crypto.randomUUID()) {
+function newMatch(code: string, id: string = crypto.randomUUID()): MatchInput {
   return {
     id,
     code,
@@ -92,6 +103,11 @@ async function liveMatch(code: string) {
   return row.live;
 }
 
+async function ownerEvents(actor: Actor, matchId: string, after: number) {
+  const [row] = await rpc<{ events: LiveEvent[] }>(actor, `select public.get_owner_events($1, $2) as events`, [matchId, after]);
+  return row.events;
+}
+
 async function liveEvents(code: string, after: number) {
   const [row] = await rpc<{ events: LiveEvent[] }>("anon", `select public.get_live_events($1, $2) as events`, [code, after]);
   return row.events;
@@ -120,7 +136,7 @@ function flat(e: WireEvent) {
 
 beforeAll(async () => {
   db = await createDb();
-  for (const u of [A, B, C, STRANGER, GUEST, OTHER_GUEST]) {
+  for (const u of [A, B, C, STRANGER, GUEST, OTHER_GUEST, BUSY_GUEST]) {
     await db.query(`insert into auth.users (id) values ($1)`, [u.sub]);
   }
 }, 60_000);
@@ -211,6 +227,40 @@ describe("push_match_events", () => {
     await expectDbError(push(A, newMatch(m1.code), D1, [wire(1)]), /code_taken/);
     expect(await count("service", `public.matches where code = $1`, [m1.code])).toBe(1);
   });
+
+  it("caps the size of rules and summary", async () => {
+    const big = { ...newMatch("hjkmnpqr"), rules: { note: "x".repeat(4100) } };
+    await expectDbError(push(A, big, D1, [wire(1)]), /matches_rules_size/);
+    expect(await count("service", `public.matches where id = $1`, [big.id])).toBe(0);
+
+    await expectDbError(push(A, { ...m1, summary: { note: "x".repeat(8200) } }, D1, []), /matches_summary_size/);
+    const [row] = (await db.query(`select summary from public.matches where id = $1`, [m1.id])).rows;
+    expect(row).toEqual({ summary: m1.summary });
+  });
+
+  it("rejects events past seq 5000 before writing anything", async () => {
+    const fresh = newMatch("hjkmnpqs");
+    await expectDbError(push(A, fresh, D1, [wire(1), wire(5001)]), /quota_exceeded/);
+    expect(await count("service", `public.matches where id = $1`, [fresh.id])).toBe(0);
+
+    await expectDbError(push(A, m1, D1, [wire(4), wire(5001)]), /quota_exceeded/);
+    expect(await push(A, m1, D1, [wire(5000)])).toBe(3);
+    expect(await eventCount(m1.id)).toBe(3);
+  });
+
+  it("limits each caller to 20 new matches a day", async () => {
+    const matches = [...CODE_ALPHABET.slice(0, 21)].map((c) => newMatch(`qqqqqqq${c}`));
+    for (const m of matches.slice(0, 20)) {
+      expect(await push(BUSY_GUEST, m, D1, [wire(1)])).toBe(1);
+    }
+    const extra = matches[20];
+    await expectDbError(push(BUSY_GUEST, extra, D1, [wire(1)]), /quota_exceeded/);
+    expect(await count("service", `public.matches where id = $1`, [extra.id])).toBe(0);
+    expect(await push(BUSY_GUEST, matches[0], D1, [wire(2)])).toBe(2);
+
+    await rpc("service", `update public.matches set created_at = now() - interval '25 hours' where id = $1`, [matches[0].id]);
+    expect(await push(BUSY_GUEST, extra, D1, [wire(1)])).toBe(1);
+  });
 });
 
 describe("privileges", () => {
@@ -230,6 +280,7 @@ describe("privileges", () => {
       "create_claim_token",
       "get_live_events",
       "get_live_match",
+      "get_owner_events",
       "match_topic_readable",
       "push_match_events",
       "take_over_scoring",
@@ -325,6 +376,32 @@ describe("live reads", () => {
     expect(await liveMatch(m1.code)).toBeNull();
     expect(await liveEvents(m1.code, 0)).toEqual([]);
     await setVisibility(m1.id, "link");
+  });
+});
+
+describe("get_owner_events", () => {
+  it("gives the owner flat events after a seq, whatever the visibility", async () => {
+    expect(await ownerEvents(A, m1.id, 1)).toEqual(m1Events.slice(1).map(flat));
+    await setVisibility(m1.id, "private");
+    expect((await ownerEvents(A, m1.id, 0)).map((e) => e.seq)).toEqual([1, 2, 3]);
+    await setVisibility(m1.id, "link");
+  });
+
+  it("refuses everyone but the owner", async () => {
+    await expectDbError(ownerEvents(STRANGER, m1.id, 0), /not_owner/);
+    await expectDbError(ownerEvents(A, crypto.randomUUID(), 0), /not_owner/);
+    await expectDbError(ownerEvents("anon", m1.id, 0), /permission denied/);
+  });
+
+  it("pages long matches 1000 events at a time", async () => {
+    const long = newMatch("rstuvwxy");
+    for (let from = 1; from <= 1001; from += 500) {
+      const batch = Array.from({ length: Math.min(500, 1002 - from) }, (_, i) => wire(from + i));
+      expect(await push(C, long, D1, batch)).toBe(from + batch.length - 1);
+    }
+    const page = await ownerEvents(C, long.id, 0);
+    expect(page.map((e) => e.seq)).toEqual(Array.from({ length: 1000 }, (_, i) => i + 1));
+    expect((await ownerEvents(C, long.id, 1000)).map((e) => e.seq)).toEqual([1001]);
   });
 });
 
