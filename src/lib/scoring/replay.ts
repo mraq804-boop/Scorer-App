@@ -12,6 +12,7 @@ import type {
   Rules,
   Wicket,
 } from "./types";
+import { ballChip, commentaryItem } from "./stats";
 import { effectiveEvents } from "./undo";
 
 type OpenOver = { summary: OverSummary; bowlers: string[]; charged: number };
@@ -203,6 +204,7 @@ function applyDelivery(ctx: Context, event: DeliveryEvent): void {
   innings.bowler = event.bowler;
   const runsBefore = innings.runs;
   const ballsBefore = innings.legalBalls;
+  const wasFreeHit = innings.freeHit;
 
   if (event.kind === "wide") scoreWide(ctx, innings, event);
   else if (event.kind === "noball") scoreNoBall(ctx, innings, event);
@@ -210,7 +212,19 @@ function applyDelivery(ctx: Context, event: DeliveryEvent): void {
 
   creditPartnership(innings, innings.runs - runsBefore, innings.legalBalls - ballsBefore);
   if (event.wicket !== null) dismiss(ctx, innings, event.wicket, event.bowler);
+  recordBall(ctx, innings, event, ballsBefore, wasFreeHit);
   if (innings.legalBalls > ballsBefore) endOverIfComplete(ctx, innings);
+}
+
+function recordBall(
+  ctx: Context,
+  innings: InningsState,
+  event: DeliveryEvent,
+  ballsBefore: number,
+  wasFreeHit: boolean,
+): void {
+  innings.commentary.push(commentaryItem(event, ballsBefore, ctx.state.rules.ballsPerOver, wasFreeHit));
+  if (ctx.over !== null) ctx.over.summary.balls.push(ballChip(event));
 }
 
 function scoreLegalBall(ctx: Context, innings: InningsState, event: DeliveryEvent): void {
