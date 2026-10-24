@@ -1,5 +1,5 @@
 export type * from "./types";
-export { EngineError, bowlerQuota, defaultRules } from "./rules";
+export { EngineError, bowlerQuota, defaultRules, otherSide } from "./rules";
 export type { EngineErrorCode } from "./rules";
 export { currentInnings, replay } from "./replay";
 export { deliveryDraft } from "./draft";
