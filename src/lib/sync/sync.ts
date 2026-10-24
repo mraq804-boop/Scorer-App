@@ -22,7 +22,7 @@ const BATCH_SIZE = 200;
 const MAX_RESEND_ROUNDS = 3;
 const BASE_DELAY_MS = 2000;
 const MAX_DELAY_MS = 60000;
-const PENDING_CLAIM_KEY = "pendingClaim";
+export const PENDING_CLAIM_KEY = "pendingClaim";
 
 let activeLoop: Loop | undefined;
 

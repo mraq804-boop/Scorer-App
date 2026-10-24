@@ -114,7 +114,7 @@ export async function createLocalMatch(db: LocalDb, setup: MatchSetup): Promise<
 export async function getDeviceId(db: LocalDb): Promise<string> {
   return db.transaction("rw", db.meta, async () => {
     const existing = await db.meta.get("deviceId");
-    if (existing !== undefined) return existing.value;
+    if (typeof existing?.value === "string") return existing.value;
     const value = crypto.randomUUID();
     await db.meta.put({ key: "deviceId", value });
     return value;

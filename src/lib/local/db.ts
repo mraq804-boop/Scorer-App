@@ -19,7 +19,7 @@ export type LocalMatch = {
 
 export type StoredEvent = MatchEvent & { matchId: string };
 
-type MetaRow = { key: string; value: string };
+type MetaRow = { key: string; value: string | StoredEvent[] };
 
 export type StorageCheck = { ok: true } | { ok: false; reason: "unavailable" | "quota" };
 
