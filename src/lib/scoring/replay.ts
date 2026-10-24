@@ -172,7 +172,6 @@ function chargeBowler(over: OpenOver, bowler: BowlerLine, runs: number): void {
 }
 
 function swapEnds(innings: InningsState): void {
-  if (innings.striker === null || innings.nonStriker === null) return;
   [innings.striker, innings.nonStriker] = [innings.nonStriker, innings.striker];
 }
 
