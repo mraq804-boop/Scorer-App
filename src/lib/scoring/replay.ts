@@ -3,14 +3,20 @@ import type {
   BatterLine,
   BowlerLine,
   DeliveryEvent,
+  DismissalKind,
   InningsState,
   MatchEvent,
   MatchState,
   OverSummary,
+  Rules,
+  Wicket,
 } from "./types";
 
 type OpenOver = { summary: OverSummary; bowlers: string[]; charged: number };
 type Context = { state: MatchState; over: OpenOver | null };
+type Dismissal = NonNullable<BatterLine["out"]>;
+
+const BOWLER_WICKETS: ReadonlySet<DismissalKind> = new Set(["bowled", "caught", "lbw", "stumped", "hit_wicket"]);
 
 function emptyState(): MatchState {
   return {
@@ -38,6 +44,15 @@ export function currentInnings(state: MatchState): InningsState | null {
   return last !== undefined && last.ended === null ? last : null;
 }
 
+export function isLoneBatter(rules: Rules, innings: InningsState): boolean {
+  return (
+    rules.lastManStands &&
+    innings.striker !== null &&
+    innings.nonStriker === null &&
+    innings.wickets >= rules.playersPerSide[innings.battingTeam] - 1
+  );
+}
+
 function apply(ctx: Context, event: MatchEvent): void {
   const { state } = ctx;
   switch (event.type) {
@@ -63,9 +78,15 @@ function apply(ctx: Context, event: MatchEvent): void {
     }
     case "strike_swapped": {
       const innings = currentInnings(state);
-      if (innings !== null) swapEnds(innings);
+      if (innings !== null) swapEnds(state, innings);
       return;
     }
+    case "batter_in":
+      batterIn(ctx, event.player);
+      return;
+    case "retired":
+      retire(ctx, event);
+      return;
     default:
       return;
   }
@@ -90,7 +111,7 @@ function startInnings(ctx: Context, event: Extract<MatchEvent, { type: "innings_
     batting: [newBatter(event.striker), newBatter(event.nonStriker)],
     bowling: [],
     fallOfWickets: [],
-    partnerships: [],
+    partnerships: [{ batters: [event.striker, event.nonStriker], runs: 0, balls: 0 }],
     overs: [],
     commentary: [],
     freeHit: false,
@@ -103,9 +124,16 @@ function startInnings(ctx: Context, event: Extract<MatchEvent, { type: "innings_
 function applyDelivery(ctx: Context, event: DeliveryEvent): void {
   const innings = currentInnings(ctx.state);
   if (innings === null) throw new EngineError("no_innings");
+  const runsBefore = innings.runs;
+  const ballsBefore = innings.legalBalls;
+
   if (event.kind === "wide") scoreWide(ctx, innings, event);
   else if (event.kind === "noball") scoreNoBall(ctx, innings, event);
   else scoreLegalBall(ctx, innings, event);
+
+  creditPartnership(innings, innings.runs - runsBefore, innings.legalBalls - ballsBefore);
+  if (event.wicket !== null) dismiss(ctx, innings, event.wicket, event.bowler);
+  if (innings.legalBalls > ballsBefore) endOverIfComplete(ctx, innings);
 }
 
 function scoreLegalBall(ctx: Context, innings: InningsState, event: DeliveryEvent): void {
@@ -128,8 +156,7 @@ function scoreLegalBall(ctx: Context, innings: InningsState, event: DeliveryEven
   chargeBowler(over, bowler, offBat);
   if (offBat === 0) bowler.dots += 1;
 
-  rotateStrike(innings, event.runs);
-  endOverIfComplete(ctx, innings);
+  rotateStrike(ctx.state, innings, event.runs);
 }
 
 function scoreWide(ctx: Context, innings: InningsState, event: DeliveryEvent): void {
@@ -143,11 +170,10 @@ function scoreWide(ctx: Context, innings: InningsState, event: DeliveryEvent): v
   bowler.wides += 1;
   chargeBowler(over, bowler, total);
 
-  rotateStrike(innings, event.runs);
+  rotateStrike(ctx.state, innings, event.runs);
   if (!ctx.state.rules.wideRebowled) {
     innings.legalBalls += 1;
     bowler.legalBalls += 1;
-    endOverIfComplete(ctx, innings);
   }
 }
 
@@ -167,7 +193,7 @@ function scoreNoBall(ctx: Context, innings: InningsState, event: DeliveryEvent):
   chargeBowler(over, bowler, event.penalty + runsOffBat(event));
 
   if (ctx.state.rules.freeHit) innings.freeHit = true;
-  rotateStrike(innings, event.runs);
+  rotateStrike(ctx.state, innings, event.runs);
 }
 
 function runsOffBat(event: DeliveryEvent): number {
@@ -187,13 +213,13 @@ function creditByes(innings: InningsState, event: DeliveryEvent): void {
   else if (event.runsAs === "legbye") innings.extras.legByes += event.runs;
 }
 
-function rotateStrike(innings: InningsState, runs: number): void {
-  if (runs % 2 !== 0) swapEnds(innings);
+function rotateStrike(state: MatchState, innings: InningsState, runs: number): void {
+  if (runs % 2 !== 0) swapEnds(state, innings);
 }
 
 function endOverIfComplete(ctx: Context, innings: InningsState): void {
   if (innings.legalBalls % ctx.state.rules.ballsPerOver !== 0) return;
-  swapEnds(innings);
+  swapEnds(ctx.state, innings);
   innings.bowler = null;
   closeOver(ctx, innings);
 }
@@ -229,8 +255,84 @@ function chargeBowler(over: OpenOver, bowler: BowlerLine, runs: number): void {
   over.charged += runs;
 }
 
-function swapEnds(innings: InningsState): void {
+function swapEnds(state: MatchState, innings: InningsState): void {
+  if (isLoneBatter(state.rules, innings)) return;
   [innings.striker, innings.nonStriker] = [innings.nonStriker, innings.striker];
+}
+
+function creditPartnership(innings: InningsState, runs: number, balls: number): void {
+  const open = innings.partnerships[innings.partnerships.length - 1];
+  open.runs += runs;
+  open.balls += balls;
+}
+
+function dismiss(ctx: Context, innings: InningsState, wicket: Wicket, bowlerId: string): void {
+  const credited = BOWLER_WICKETS.has(wicket.kind);
+  recordWicket(innings, wicket.playerOut, {
+    kind: wicket.kind,
+    bowler: credited ? bowlerId : null,
+    fielderName: wicket.fielderName,
+  });
+  if (credited) bowlerLineFor(innings, bowlerId).wickets += 1;
+  if (ctx.over !== null) ctx.over.summary.wickets += 1;
+
+  vacateEnd(innings, wicket.playerOut);
+  if (wicket.kind === "caught" && innings.nonStriker === null) swapEnds(ctx.state, innings);
+  settleLastManStands(ctx.state, innings);
+}
+
+function retire(ctx: Context, event: Extract<MatchEvent, { type: "retired" }>): void {
+  const innings = currentInnings(ctx.state);
+  if (innings === null) return;
+  if (event.how === "hurt") {
+    batterLineFor(innings, event.player).retiredHurt = true;
+    vacateEnd(innings, event.player);
+    return;
+  }
+  recordWicket(innings, event.player, { kind: "retired_out", bowler: null, fielderName: null });
+  vacateEnd(innings, event.player);
+  settleLastManStands(ctx.state, innings);
+}
+
+function recordWicket(innings: InningsState, playerId: string, out: Dismissal): void {
+  innings.wickets += 1;
+  batterLineFor(innings, playerId).out = out;
+  innings.fallOfWickets.push({
+    wicket: innings.wickets,
+    runs: innings.runs,
+    legalBalls: innings.legalBalls,
+    playerId,
+  });
+}
+
+function vacateEnd(innings: InningsState, playerId: string): void {
+  if (innings.striker === playerId) innings.striker = null;
+  else if (innings.nonStriker === playerId) innings.nonStriker = null;
+}
+
+function settleLastManStands(state: MatchState, innings: InningsState): void {
+  const { rules } = state;
+  if (!rules.lastManStands || innings.wickets !== rules.playersPerSide[innings.battingTeam] - 1) return;
+  const lone = innings.striker ?? innings.nonStriker;
+  if (lone === null || (innings.striker !== null && innings.nonStriker !== null)) return;
+  innings.striker = lone;
+  innings.nonStriker = null;
+  innings.partnerships.push({ batters: [lone, null], runs: 0, balls: 0 });
+}
+
+function batterIn(ctx: Context, playerId: string): void {
+  const innings = currentInnings(ctx.state);
+  if (innings === null || (innings.striker !== null && innings.nonStriker !== null)) return;
+
+  batterLineFor(innings, playerId).retiredHurt = false;
+  const partner = innings.striker ?? innings.nonStriker;
+  if (innings.striker === null) innings.striker = playerId;
+  else innings.nonStriker = playerId;
+  innings.partnerships.push({
+    batters: partner === null ? [playerId, null] : [partner, playerId],
+    runs: 0,
+    balls: 0,
+  });
 }
 
 function newBatter(playerId: string): BatterLine {
