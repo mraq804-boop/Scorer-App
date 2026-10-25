@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { GuestSession } from "@/components/guest-session";
+import { PwaRegister } from "@/components/pwa/pwa-register";
 import { t } from "@/lib/i18n";
 
 function ScoreScreen() {
@@ -21,6 +22,7 @@ export default function ScorePage() {
         <ScoreScreen />
       </Suspense>
       <GuestSession />
+      <PwaRegister />
     </main>
   );
 }

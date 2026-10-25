@@ -44,19 +44,38 @@ test("pages outside the shell fall back to the offline screen", async ({ page, c
   await context.setOffline(false);
 });
 
-test("the install precaches every shell page, the offline screen and their assets", async ({ page }) => {
+test("the install precaches every shell page, the offline screen and every asset they reference", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
 
-  const cached = await page.evaluate(async () => {
-    const paths: string[] = [];
-    for (const name of await caches.keys()) {
-      for (const request of await (await caches.open(name)).keys()) paths.push(new URL(request.url).pathname);
+  const { cached, referenced, uncached } = await page.evaluate(async () => {
+    const names = await caches.keys();
+    const shell = await caches.open(names.find((name) => name.startsWith("cs-shell-"))!);
+    const assets = await caches.open(names.find((name) => name.startsWith("cs-static-"))!);
+    const cachedPaths: string[] = [];
+    for (const name of names) {
+      for (const request of await (await caches.open(name)).keys()) cachedPaths.push(new URL(request.url).pathname);
     }
-    return paths;
+    const cachedAssets = new Set((await assets.keys()).map((request) => new URL(request.url).pathname + new URL(request.url).search));
+    const urls = new Set<string>();
+    for (const path of ["/", "/new", "/score", "/offline"]) {
+      const html = await (await shell.match(path))!.text();
+      for (const url of html.match(/\/_next\/static\/[^"'\s)<>\\]+/g) ?? []) urls.add(url);
+    }
+    return { cached: cachedPaths, referenced: [...urls], uncached: [...urls].filter((url) => !cachedAssets.has(url)) };
   });
+
   for (const path of ["/", "/new", "/score", "/offline", "/manifest.webmanifest", "/icons/192", "/icons/512"]) {
     expect(cached).toContain(path);
   }
-  expect(cached.some((path) => path.startsWith("/_next/static/chunks/"))).toBe(true);
+  expect(referenced.some((url) => url.endsWith(".js"))).toBe(true);
+  expect(referenced.some((url) => url.endsWith(".css"))).toBe(true);
+  expect(uncached).toEqual([]);
+});
+
+test("live match pages do not install the service worker", async ({ page }) => {
+  await page.goto("/m/abcd2345");
+  await page.waitForTimeout(1500);
+  const registrations = await page.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).length);
+  expect(registrations).toBe(0);
 });

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { WifiOff } from "lucide-react";
+import { PwaRegister } from "@/components/pwa/pwa-register";
 import { t } from "@/lib/i18n";
 import { RetryButton } from "./retry-button";
 
@@ -19,6 +20,7 @@ export default function OfflinePage() {
           {t("offline.home")}
         </a>
       </div>
+      <PwaRegister />
     </main>
   );
 }

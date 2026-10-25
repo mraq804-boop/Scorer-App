@@ -11,7 +11,29 @@ const OFFLINE_URL = "/offline";
 const SHELL_PRECACHE = [...SHELL_PATHS, OFFLINE_URL, "/manifest.webmanifest"];
 const ICON_PRECACHE = ["/icons/192", "/icons/512"];
 
+const STATIC_ASSET = /(?:src|href)="(\/_next\/static\/[^"]+)"/g;
+
 const fresh = (url) => new Request(url, { cache: "reload" });
+const isCode = (url) => /\.(?:js|css)(?:\?|$)/.test(url);
+
+async function addWithRetry(cache, url) {
+  try {
+    await cache.add(url);
+  } catch {
+    await cache.add(url);
+  }
+}
+
+async function precacheAssets(cache, pages) {
+  const urls = new Set(pages.flatMap((html) => [...html.matchAll(STATIC_ASSET)].map((match) => match[1].replace(/&amp;/g, "&"))));
+  await Promise.all(
+    [...urls].map((url) =>
+      addWithRetry(cache, url).catch((error) => {
+        if (isCode(url)) throw error;
+      }),
+    ),
+  );
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -21,8 +43,7 @@ self.addEventListener("install", (event) => {
       await shell.addAll(SHELL_PRECACHE.map(fresh));
       await assets.addAll(ICON_PRECACHE.map(fresh));
       const pages = await Promise.all([...SHELL_PATHS, OFFLINE_URL].map(async (path) => (await shell.match(path)).text()));
-      const scraped = new Set(pages.flatMap((html) => html.match(/\/_next\/static\/[^"'\s)<>\\]+/g) ?? []));
-      await Promise.all([...scraped].map((asset) => assets.add(asset).catch(() => undefined)));
+      await precacheAssets(assets, pages);
     })(),
   );
 });

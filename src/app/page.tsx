@@ -1,4 +1,5 @@
 import { GuestSession } from "@/components/guest-session";
+import { PwaRegister } from "@/components/pwa/pwa-register";
 import { t } from "@/lib/i18n";
 
 export default function Home() {
@@ -7,6 +8,7 @@ export default function Home() {
       <h1 className="text-3xl font-bold">{t("app.name")}</h1>
       <p className="text-muted-foreground">{t("home.tagline")}</p>
       <GuestSession />
+      <PwaRegister />
     </main>
   );
 }
