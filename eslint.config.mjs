@@ -5,7 +5,7 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
-  { rules: { "@next/next/no-html-link-for-pages": "off" } },
+  { rules: { "@next/next/no-html-link-for-pages": "off", "@next/next/no-location-assign-relative-destination": "off" } },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
