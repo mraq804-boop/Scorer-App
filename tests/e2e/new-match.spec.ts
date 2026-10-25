@@ -43,6 +43,7 @@ test("start a match with defaults", async ({ page }) => {
   await expect(page).toHaveURL(/\/score\?m=/);
   const id = new URL(page.url()).searchParams.get("m");
   expect(id).toMatch(/^[0-9a-f-]{36}$/);
+  await expect(page.getByTestId("score")).toContainText("0/0");
 
   await page.goto("/");
   const item = page.getByRole("link", { name: /Lions vs Tigers/ });

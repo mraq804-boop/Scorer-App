@@ -1,8 +1,8 @@
 import { formatOvers } from "@/lib/scoring";
-import type { CommentaryItem, InningsState, MatchState, Player, Result } from "@/lib/scoring";
+import type { BowlerLine, CommentaryItem, InningsState, MatchState, Player, Result, Warning } from "@/lib/scoring";
 import { t } from "./index";
 
-type Unit = "run" | "bye" | "legBye" | "wicket" | "ball";
+type Unit = "run" | "bye" | "legBye" | "wicket" | "ball" | "over";
 
 function count(unit: Unit, n: number): string {
   return t(`unit.${unit}.${n === 1 ? "one" : "other"}`, { n });
@@ -62,5 +62,29 @@ export function formatScoreLine(innings: InningsState, state: MatchState): strin
     runs: innings.runs,
     wickets: innings.wickets,
     overs: formatOvers(innings.legalBalls, state.rules.ballsPerOver),
+  });
+}
+
+export function formatWarning(warning: Warning, players: Record<string, Player>): string {
+  switch (warning.kind) {
+    case "consecutive_overs":
+      return t("warning.consecutiveOvers", { bowler: playerName(players, warning.bowler) });
+    case "bowler_quota":
+      return t("warning.bowlerQuota", { bowler: playerName(players, warning.bowler), overs: count("over", warning.quota) });
+    case "strike_mismatch":
+      return t("warning.strikeMismatch");
+  }
+}
+
+export function formatNeed(runs: number, ballsLeft: number): string {
+  return t("score.need", { runs, balls: count("ball", ballsLeft) });
+}
+
+export function formatFigures(line: BowlerLine, ballsPerOver: number): string {
+  return t("score.figures", {
+    overs: formatOvers(line.legalBalls, ballsPerOver),
+    maidens: line.maidens,
+    runs: line.runs,
+    wickets: line.wickets,
   });
 }

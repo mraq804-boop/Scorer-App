@@ -13,7 +13,7 @@ export type MatchSetupField = "teamA" | "teamB" | "overs" | "striker" | "nonStri
 export type MatchSetupErrors = Partial<Record<MatchSetupField, string>>;
 export type MatchSetupResult = { ok: true; setup: MatchSetup } | { ok: false; errors: MatchSetupErrors };
 
-const name = z
+export const nameSchema = z
   .string()
   .trim()
   .min(1, t("setup.error.required"))
@@ -40,18 +40,18 @@ const rules = z.object({
   lastManStands: z.boolean(),
 });
 
-function sameName(first: string, second: string): boolean {
+export function sameName(first: string, second: string): boolean {
   return first.toLocaleLowerCase() === second.toLocaleLowerCase();
 }
 
 export const matchSetupSchema = z
   .object({
-    teams: z.tuple([name, name]),
+    teams: z.tuple([nameSchema, nameSchema]),
     rules,
     toss: z.object({ winner: side, choice: z.enum(["bat", "bowl"]) }),
-    striker: name,
-    nonStriker: name,
-    bowler: name,
+    striker: nameSchema,
+    nonStriker: nameSchema,
+    bowler: nameSchema,
   })
   .refine(({ striker, nonStriker }) => striker === "" || nonStriker === "" || !sameName(striker, nonStriker), {
     path: ["nonStriker"],

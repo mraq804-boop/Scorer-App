@@ -6,6 +6,7 @@ describe("i18n", () => {
     expect(t("sync.saved")).toBe("Saved on phone");
     expect(t("sync.synced")).toBe("Synced");
     expect(t("prompt.allOut")).toBe("All out — end innings, or add a player?");
+    expect(t("sync.blocked")).toBe("Not synced — scoring moved to another phone");
   });
 
   it("interpolates variables", () => {

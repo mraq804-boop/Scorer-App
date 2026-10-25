@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatCommentary, formatResult, formatScoreLine } from "@/lib/i18n/cricket";
+import { formatCommentary, formatFigures, formatNeed, formatResult, formatScoreLine, formatWarning } from "@/lib/i18n/cricket";
 import { summarize } from "@/lib/share/summary";
 import { replay } from "@/lib/scoring";
 import type { CommentaryItem, Player } from "@/lib/scoring";
@@ -173,5 +173,51 @@ describe("summarize", () => {
   it("has no lines before an innings starts", () => {
     const m = new TestMatch();
     expect(summarize(replay(m.events.slice(0, 1)))).toMatchObject({ status: "setup", lines: [], result: null });
+  });
+});
+
+describe("formatWarning", () => {
+  it("names a bowler who bowled the last over too", () => {
+    expect(formatWarning({ eventId: "x", kind: "consecutive_overs", bowler: "p-Hamza" }, players)).toBe(
+      "Hamza also bowled the last over",
+    );
+  });
+
+  it("names a bowler over the quota with the quota in overs", () => {
+    expect(formatWarning({ eventId: "x", kind: "bowler_quota", bowler: "p-Hamza", quota: 2 }, players)).toBe(
+      "Hamza has already bowled 2 overs, the most allowed",
+    );
+    expect(formatWarning({ eventId: "x", kind: "bowler_quota", bowler: "p-Hamza", quota: 1 }, players)).toBe(
+      "Hamza has already bowled 1 over, the most allowed",
+    );
+  });
+
+  it("asks the scorer to check the strike", () => {
+    expect(formatWarning({ eventId: "x", kind: "strike_mismatch" }, players)).toBe(
+      "The striker doesn't match the ball before. Check who's on strike.",
+    );
+  });
+
+  it("reads real engine output", () => {
+    const m = new TestMatch();
+    m.over([0, 0, 0, 0, 0, 0]);
+    m.bowler("Hamza");
+    const [warning] = m.state.warnings;
+    expect(formatWarning(warning, m.state.players)).toBe("Hamza also bowled the last over");
+  });
+});
+
+describe("formatNeed", () => {
+  it("says how many runs are needed from how many balls", () => {
+    expect(formatNeed(64, 50)).toBe("Need 64 from 50 balls");
+    expect(formatNeed(1, 1)).toBe("Need 1 from 1 ball");
+  });
+});
+
+describe("formatFigures", () => {
+  it("writes overs, maidens, runs and wickets", () => {
+    const line = { playerId: "p-Hamza", legalBalls: 14, runs: 18, wickets: 1, wides: 0, noBalls: 0, maidens: 1, dots: 7 };
+    expect(formatFigures(line, 6)).toBe("2.2-1-18-1");
+    expect(formatFigures({ ...line, legalBalls: 16 }, 8)).toBe("2-1-18-1");
   });
 });

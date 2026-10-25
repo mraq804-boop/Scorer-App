@@ -4,13 +4,13 @@ import { ChevronDown } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import type { FormEvent } from "react";
 import { SegmentedControl } from "@/components/segmented-control";
+import { NameField, NameSuggestions, TeamCaption } from "@/components/scoring/name-field";
 import { RulesFields } from "@/components/scoring/rules-fields";
 import type { TunableRules } from "@/components/scoring/rules-fields";
 import { StorageError } from "@/components/storage-error";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { t } from "@/lib/i18n";
 import { checkStorage, getLocalDb, requestPersist } from "@/lib/local/db";
 import type { StorageCheck } from "@/lib/local/db";
@@ -68,52 +68,6 @@ const CHOICES = [
   { value: "bat", label: t("setup.choice.bat") },
   { value: "bowl", label: t("setup.choice.bowl") },
 ] as const;
-
-type NameFieldProps = {
-  name: MatchSetupField;
-  label: string;
-  value: string;
-  error?: string;
-  list?: string;
-  onChange: (value: string) => void;
-};
-
-function NameField({ name, label, value, error, list, onChange }: NameFieldProps) {
-  const id = useId();
-  return (
-    <div className="flex min-w-0 flex-col gap-1.5">
-      <Label htmlFor={id}>{label}</Label>
-      <Input
-        id={id}
-        name={name}
-        dir="auto"
-        value={value}
-        list={list}
-        autoComplete="off"
-        autoCapitalize="words"
-        enterKeyHint="next"
-        aria-invalid={error === undefined ? undefined : true}
-        aria-describedby={error === undefined ? undefined : `${id}-error`}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-12 rounded-xl px-3.5 md:text-base"
-      />
-      {error !== undefined && (
-        <p id={`${id}-error`} className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function TeamCaption({ prefix, team }: { prefix: string; team: string }) {
-  return (
-    <p className="flex min-w-0 gap-1.5 text-sm text-muted-foreground">
-      <span className="shrink-0">{prefix}</span>
-      <bdi className="min-w-0 truncate font-medium text-foreground">{team}</bdi>
-    </p>
-  );
-}
 
 function focusFirstInvalid(form: HTMLFormElement, errors: MatchSetupErrors) {
   const first = FOCUS_ORDER.find((field) => errors[field] !== undefined);
@@ -273,11 +227,7 @@ function SetupForm({ players }: { players: string[] }) {
           list={PLAYERS_LIST_ID}
           onChange={(bowler) => update({ bowler })}
         />
-        <datalist id={PLAYERS_LIST_ID}>
-          {players.map((player) => (
-            <option key={player} value={player} />
-          ))}
-        </datalist>
+        <NameSuggestions id={PLAYERS_LIST_ID} names={players} />
       </section>
 
       <div className="sticky bottom-0 -mx-4 mt-auto border-t bg-background/95 px-4 backdrop-blur pb-safe">
