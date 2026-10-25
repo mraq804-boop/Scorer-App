@@ -5,7 +5,8 @@ import { PENDING_CLAIM_KEY } from "@/lib/sync/sync";
 const CLAIM_INVALID = "claim_invalid";
 
 export async function startGoogleSignIn(client: SupabaseClient, db: LocalDb, siteUrl: string): Promise<void> {
-  const { data } = await client.auth.getSession();
+  const { data, error: sessionError } = await client.auth.getSession();
+  if (sessionError !== null) throw sessionError;
   if (data.session?.user.is_anonymous === true && (await db.matches.count()) > 0) {
     const { data: token, error } = await client.rpc("create_claim_token");
     if (error !== null) throw new Error(error.message);

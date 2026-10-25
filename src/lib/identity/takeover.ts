@@ -23,9 +23,17 @@ async function fetchOwnerMatch(client: SupabaseClient, matchId: string): Promise
   return data as OwnerMatchRow;
 }
 
-async function fetchOwnerEvents(client: SupabaseClient, matchId: string): Promise<MatchEvent[]> {
+function highestSeq(events: MatchEvent[]): number {
+  return events.reduce((max, event) => Math.max(max, event.seq), 0);
+}
+
+function withMatchId(matchId: string, events: MatchEvent[]): StoredEvent[] {
+  return events.map((event) => ({ ...event, matchId }));
+}
+
+async function fetchOwnerEvents(client: SupabaseClient, matchId: string, from: number): Promise<MatchEvent[]> {
   const events: MatchEvent[] = [];
-  let after = 0;
+  let after = from;
   for (;;) {
     const { data, error } = await client.rpc("get_owner_events", { p_match: matchId, p_after: after });
     if (error !== null) throw new Error(error.message);
@@ -47,22 +55,46 @@ async function keepUnsyncedEvents(db: LocalDb, local: LocalMatch): Promise<void>
   await db.meta.put({ key: orphanKey(local.id), value: [...kept, ...unsynced] });
 }
 
+async function appendLateEvents(
+  db: LocalDb,
+  matchId: string,
+  known: MatchEvent[],
+  late: MatchEvent[],
+): Promise<void> {
+  const lastSeq = highestSeq(late);
+  const summary = summarize(replay([...known, ...late]));
+  await db.transaction("rw", db.matches, db.events, async () => {
+    await db.events.bulkAdd(withMatchId(matchId, late));
+    await db.matches.update(matchId, {
+      lastSeq,
+      syncedSeq: lastSeq,
+      summary,
+      updatedAt: new Date().toISOString(),
+    });
+  });
+}
+
 export async function takeOverScoring(client: SupabaseClient, db: LocalDb, matchId: string): Promise<void> {
   const device = await getDeviceId(db);
   const taken = await client.rpc("take_over_scoring", { p_match: matchId, p_device: device });
   if (taken.error !== null) throw new Error(taken.error.message);
+  if (typeof taken.data !== "number") throw new Error("Unexpected take-over response");
 
   const row = await fetchOwnerMatch(client, matchId);
-  const events = await fetchOwnerEvents(client, matchId);
+  const events = await fetchOwnerEvents(client, matchId, 0);
   if (events.length === 0) throw new Error("The match has no events to take over");
 
-  const lastSeq = events.reduce((max, event) => Math.max(max, event.seq), 0);
+  const lastSeq = highestSeq(events);
+  if (lastSeq < taken.data) throw new Error("The owner events were read incompletely");
   const summary = summarize(replay(events));
-  const stored = events.map((event): StoredEvent => ({ ...event, matchId }));
+  const stored = withMatchId(matchId, events);
   const now = new Date().toISOString();
 
   await db.transaction("rw", db.matches, db.events, db.meta, async () => {
     const local = await db.matches.get(matchId);
+    if (local !== undefined && local.syncedSeq > local.lastSeq) {
+      throw new Error("Local sync state is ahead of the local events");
+    }
     if (local !== undefined && local.syncedSeq < local.lastSeq) await keepUnsyncedEvents(db, local);
     await db.events.where("matchId").equals(matchId).delete();
     await db.events.bulkAdd(stored);
@@ -81,4 +113,7 @@ export async function takeOverScoring(client: SupabaseClient, db: LocalDb, match
       title: row.title,
     });
   });
+
+  const late = await fetchOwnerEvents(client, matchId, lastSeq);
+  if (late.length > 0) await appendLateEvents(db, matchId, events, late);
 }

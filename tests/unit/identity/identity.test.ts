@@ -181,6 +181,15 @@ describe("startGoogleSignIn", () => {
     expect(await db.meta.get("pendingClaim")).toBeUndefined();
   });
 
+  it("does not start Google sign-in when the stored session cannot be read", async () => {
+    const db = freshDb();
+    await createLocalMatch(db, setup());
+    const { client, order } = fakeClient({ sessionError: new Error("refresh failed"), rpc: claimToken });
+    await expect(startGoogleSignIn(client, db, SITE)).rejects.toThrow("refresh failed");
+    expect(order).toEqual([]);
+    expect(await db.meta.get("pendingClaim")).toBeUndefined();
+  });
+
   it("does not start Google sign-in when the claim token cannot be created", async () => {
     const db = freshDb();
     await createLocalMatch(db, setup());
@@ -357,7 +366,7 @@ describe("takeOverScoring", () => {
 
     await takeOverScoring(client, db, matchId);
 
-    expect(pages).toEqual([0, PAGE]);
+    expect(pages).toEqual([0, PAGE, match.events.length]);
     const events = await loadEvents(db, matchId);
     expect(events).toHaveLength(match.events.length);
     expect(events.map((event) => event.seq)).toEqual(match.events.map((event) => event.seq));
@@ -420,6 +429,83 @@ describe("takeOverScoring", () => {
     const kept = (await db.meta.get(`orphaned:${local.id}`))?.value as StoredEvent[];
     expect(kept.map((event) => event.id)).toEqual([first, second]);
     expect(await loadEvents(db, local.id)).toEqual(match.events);
+  });
+
+  it("refuses a take-over reply that carries no last_seq", async () => {
+    const db = freshDb();
+    const local = await createLocalMatch(db, setup());
+    const { client, raw } = fakeClient({
+      session: GOOGLE,
+      rpc: { take_over_scoring: () => ({ data: null, error: null }) },
+    });
+
+    await expect(takeOverScoring(client, db, local.id)).rejects.toThrow("Unexpected take-over response");
+
+    expect(raw.from).not.toHaveBeenCalled();
+    expect(await db.matches.get(local.id)).toEqual(local);
+  });
+
+  it("writes nothing when the paged events stop short of the server's last_seq", async () => {
+    const db = freshDb();
+    const local = await createLocalMatch(db, setup());
+    await db.matches.update(local.id, { syncedSeq: 2, syncState: "pending" });
+    const before = await loadEvents(db, local.id);
+    const beforeMatch = await db.matches.get(local.id);
+    const match = serverMatch(3);
+    const { client } = serverFor(match.events, match.state.rules, {
+      take_over_scoring: () => ({ data: match.events.length + 4, error: null }),
+    });
+
+    await expect(takeOverScoring(client, db, local.id)).rejects.toThrow("incomplete");
+
+    expect(await loadEvents(db, local.id)).toEqual(before);
+    expect(await db.matches.get(local.id)).toEqual(beforeMatch);
+    expect(await db.meta.get(`orphaned:${local.id}`)).toBeUndefined();
+  });
+
+  it("writes nothing when the local syncedSeq is ahead of the local lastSeq", async () => {
+    const db = freshDb();
+    const local = await createLocalMatch(db, setup());
+    await db.matches.update(local.id, { syncedSeq: local.lastSeq + 2 });
+    const before = await loadEvents(db, local.id);
+    const beforeMatch = await db.matches.get(local.id);
+    const match = serverMatch(3);
+    const { client } = serverFor(match.events, match.state.rules);
+
+    await expect(takeOverScoring(client, db, local.id)).rejects.toThrow("ahead of the local events");
+
+    expect(await loadEvents(db, local.id)).toEqual(before);
+    expect(await db.matches.get(local.id)).toEqual(beforeMatch);
+    expect(await db.meta.get(`orphaned:${local.id}`)).toBeUndefined();
+  });
+
+  it("picks up events this device pushed late, after the take-over snapshot", async () => {
+    const db = freshDb();
+    const match = serverMatch(8);
+    const matchId = crypto.randomUUID();
+    const snapshot = match.events.slice(0, 10);
+    let landed = false;
+    const { client, raw } = serverFor(snapshot, match.state.rules, {
+      get_owner_events: (args) => {
+        const after = args.p_after as number;
+        const visible = landed ? match.events : snapshot;
+        landed = true;
+        return { data: visible.filter((event) => event.seq > after), error: null };
+      },
+    });
+
+    await takeOverScoring(client, db, matchId);
+
+    expect(raw.rpc).toHaveBeenCalledWith("get_owner_events", { p_match: matchId, p_after: snapshot.length });
+    expect(await loadEvents(db, matchId)).toEqual(match.events);
+    const local = await db.matches.get(matchId);
+    expect(local).toMatchObject({
+      lastSeq: match.events.length,
+      syncedSeq: match.events.length,
+      syncState: "synced",
+      blockedReason: null,
+    });
+    expect(local?.summary).toEqual(summarize(replay(match.events)));
   });
 
   it("leaves the local copy alone when the take-over is refused", async () => {

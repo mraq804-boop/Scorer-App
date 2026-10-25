@@ -412,6 +412,26 @@ describe("syncMatch", () => {
     expect(await db.matches.get(match.id)).toMatchObject({ syncedSeq: 5, lastSeq: 5, syncState: "synced" });
   });
 
+  it("never records more than the lastSeq the local copy has when the ack lands", async () => {
+    const db = freshDb();
+    const match = await createLocalMatch(db, setup());
+    const fake = server();
+    const written: number[] = [];
+    db.matches.hook("updating", (changes) => {
+      if ("syncedSeq" in changes) written.push((changes as { syncedSeq: number }).syncedSeq);
+    });
+    const push: PushFn = async (args) => {
+      const result = await fake.push(args);
+      await db.matches.update(match.id, { lastSeq: 3 });
+      return result;
+    };
+
+    expect(await syncMatch(db, match.id, push)).toBe("synced");
+
+    expect(written).toEqual([3]);
+    expect(await db.matches.get(match.id)).toMatchObject({ syncedSeq: 3, lastSeq: 3, syncState: "synced" });
+  });
+
   it("code_taken regenerates the code once", async () => {
     const db = freshDb();
     const match = await createLocalMatch(db, setup());

@@ -57,10 +57,11 @@ async function recordProgress(db: LocalDb, matchId: string, syncedSeq: number): 
   return db.transaction("rw", db.matches, async () => {
     const current = await db.matches.get(matchId);
     if (current === undefined) throw new Error(`Unknown match ${matchId}`);
+    const acked = Math.min(syncedSeq, current.lastSeq);
     const syncState =
-      current.syncState === "blocked" ? "blocked" : current.lastSeq === syncedSeq ? "synced" : "pending";
-    if (current.syncedSeq !== syncedSeq || current.syncState !== syncState) {
-      await db.matches.update(matchId, { syncedSeq, syncState });
+      current.syncState === "blocked" ? "blocked" : current.lastSeq === acked ? "synced" : "pending";
+    if (current.syncedSeq !== acked || current.syncState !== syncState) {
+      await db.matches.update(matchId, { syncedSeq: acked, syncState });
     }
     return syncState;
   });
