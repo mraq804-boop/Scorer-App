@@ -25,8 +25,9 @@ function isMatchEvent(value: unknown): value is MatchEvent {
   return typeof id === "string" && typeof seq === "number" && typeof type === "string";
 }
 
-async function fetchEventsAfter(code: string, after: number, signal: AbortSignal): Promise<MatchEvent[]> {
-  const response = await fetch(`/api/m/${encodeURIComponent(code)}/events?after=${after}`, { cache: "no-cache", signal });
+async function fetchEventsAfter(code: string, after: number, fresh: string | null, signal: AbortSignal): Promise<MatchEvent[]> {
+  const query = fresh === null ? `after=${after}` : `after=${after}&fresh=${fresh}`;
+  const response = await fetch(`/api/m/${encodeURIComponent(code)}/events?${query}`, { cache: "no-cache", signal });
   if (!response.ok) throw new Error(`events request failed with ${response.status}`);
   const body: unknown = await response.json();
   const events = typeof body === "object" && body !== null ? (body as { events?: unknown }).events : undefined;
@@ -45,6 +46,9 @@ export function startLiveFeed({ createClient, matchId, code, initial, pollMs, is
   let fallback = false;
   let fetchFailed = false;
   let stopped = false;
+  let subscriptions = 0;
+  let freshThrough = 0;
+  let freshCount = 0;
 
   function syncPolling(): void {
     if (stopped) return;
@@ -79,7 +83,9 @@ export function startLiveFeed({ createClient, matchId, code, initial, pollMs, is
     inFlight = request;
     const timeout = setTimeout(() => request.abort(), REQUEST_TIMEOUT_POLLS * pollMs);
     const before = settledSeq;
-    const fetched = await fetchEventsAfter(code, settledSeq, request.signal).catch(() => null);
+    const subscription = subscriptions;
+    const fresh = freshThrough < subscription ? `${Date.now()}-${++freshCount}` : null;
+    const fetched = await fetchEventsAfter(code, settledSeq, fresh, request.signal).catch(() => null);
     clearTimeout(timeout);
     inFlight = undefined;
     fetching = false;
@@ -88,6 +94,7 @@ export function startLiveFeed({ createClient, matchId, code, initial, pollMs, is
     if (fetched === null) syncPolling();
     else ingest(fetched);
     const pageFull = fetched !== null && fetched.length >= PAGE_LIMIT && settledSeq > before;
+    if (fresh !== null && fetched !== null && !pageFull) freshThrough = subscription;
     if (fetchAgain || pageFull) {
       fetchAgain = false;
       await catchUp();
@@ -113,6 +120,7 @@ export function startLiveFeed({ createClient, matchId, code, initial, pollMs, is
     }
     clearTimeout(subscribeTimer);
     fallback = false;
+    subscriptions += 1;
     syncPolling();
     void catchUp();
   }

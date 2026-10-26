@@ -41,6 +41,24 @@ describe("GET /api/m/[code]/events", () => {
     expect(getLiveEvents).toHaveBeenCalledWith(CODE, 2);
   });
 
+  it("ignores the viewer's cache-busting fresh parameter and any other unknown one", async () => {
+    getLiveEvents.mockResolvedValue([event(3)]);
+
+    const response = await call(CODE, "?after=2&fresh=1761480000000-1&utm_source=whatsapp");
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ events: [event(3)] });
+    expect(response.headers.get("cache-control")).toBe("public, s-maxage=3, stale-while-revalidate=10");
+    expect(getLiveEvents).toHaveBeenCalledWith(CODE, 2);
+  });
+
+  it.each(["?after=abc&fresh=1", "?fresh=1&after=-1"])("still validates after when fresh is present (%s)", async (query) => {
+    const response = await call(CODE, query);
+
+    expect(response.status).toBe(400);
+    expect(getLiveEvents).not.toHaveBeenCalled();
+  });
+
   it("treats a missing after as 0", async () => {
     getLiveEvents.mockResolvedValue([event(1)]);
 

@@ -26,6 +26,14 @@ function eventsUrl(after: number): string {
   return `/api/m/${CODE}/events?after=${after}`;
 }
 
+function freshUrl(after: number) {
+  return expect.stringMatching(new RegExp(`^/api/m/${CODE}/events\\?after=${after}&fresh=[\\w.-]+$`));
+}
+
+function freshness(url: string): string | null {
+  return new URL(url, "http://localhost").searchParams.get("fresh");
+}
+
 function fakeRealtime() {
   let onBroadcast: ((message: Message) => void) | undefined;
   let onStatus: ((status: string) => void) | undefined;
@@ -188,11 +196,70 @@ describe("startLiveFeed realtime", () => {
 
     realtime.status("SUBSCRIBED");
     await flush();
-    expect(server.urls).toEqual([eventsUrl(2)]);
+    expect(server.urls).toEqual([freshUrl(2)]);
     expect(lastPublished(onChange)).toEqual([1, 2, 3]);
 
     await vi.advanceTimersByTimeAsync(SUBSCRIBE_TIMEOUT_MS + POLL_MS * 4);
     expect(server.urls).toHaveLength(1);
+  });
+
+  it("bypasses the CDN on the catch-up after every SUBSCRIBED, while polls and gap fills stay cacheable", async () => {
+    const server = fakeServer(upTo(2));
+    const { realtime } = start(upTo(2));
+
+    realtime.status("SUBSCRIBED");
+    await flush();
+    server.events.push(event(3), event(4));
+    realtime.deliver(event(4));
+    await flush();
+    realtime.status("CLOSED");
+    await flush();
+    await vi.advanceTimersByTimeAsync(POLL_MS);
+    realtime.status("SUBSCRIBED");
+    await flush();
+
+    expect(server.urls).toEqual([freshUrl(2), eventsUrl(2), eventsUrl(4), eventsUrl(4), freshUrl(4)]);
+    expect(freshness(server.urls[0])).not.toBe(freshness(server.urls[4]));
+  });
+
+  it("gives a SUBSCRIBED that arrives during a fresh catch-up its own fresh catch-up", async () => {
+    const resolvers: Array<(events: MatchEvent[]) => void> = [];
+    const urls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: string | URL | Request) => {
+        urls.push(String(input));
+        return new Promise<Response>((resolve) => {
+          resolvers.push((events) => resolve(Response.json({ events })));
+        });
+      }),
+    );
+    const { realtime } = start(upTo(2));
+
+    realtime.status("SUBSCRIBED");
+    realtime.status("SUBSCRIBED");
+    resolvers.shift()?.([]);
+    await flush();
+
+    expect(urls).toEqual([freshUrl(2), freshUrl(2)]);
+    expect(freshness(urls[0])).not.toBe(freshness(urls[1]));
+  });
+
+  it("finds the last ball even when the CDN still holds a copy cached before it", async () => {
+    const origin = upTo(3);
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(String(input), "http://localhost");
+      const after = Number(url.searchParams.get("after"));
+      const cached = url.searchParams.has("fresh") ? origin : upTo(2);
+      return Response.json({ events: cached.filter((e) => e.seq > after) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { realtime, onChange } = start(upTo(2));
+
+    realtime.status("SUBSCRIBED");
+    await flush();
+
+    expect(lastPublished(onChange)).toEqual([1, 2, 3]);
   });
 });
 
@@ -217,7 +284,9 @@ describe("startLiveFeed recovery while subscribed", () => {
     expect(onChange).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(POLL_MS);
-    expect(requested(server)).toEqual([eventsUrl(2), eventsUrl(2)]);
+    const urls = requested(server);
+    expect(urls).toEqual([freshUrl(2), freshUrl(2)]);
+    expect(freshness(urls[0])).not.toBe(freshness(urls[1]));
     expect(lastPublished(onChange)).toEqual([1, 2, 3]);
 
     await vi.advanceTimersByTimeAsync(POLL_MS * 4);
@@ -270,7 +339,7 @@ describe("startLiveFeed recovery while subscribed", () => {
     realtime.status("SUBSCRIBED");
     for (let i = 0; i < 5; i++) await flush();
 
-    expect(requested(server)).toEqual([eventsUrl(1), eventsUrl(1001), eventsUrl(2001)]);
+    expect(requested(server)).toEqual([freshUrl(1), freshUrl(1001), freshUrl(2001)]);
     expect(lastPublished(onChange)).toHaveLength(2500);
 
     await vi.advanceTimersByTimeAsync(POLL_MS * 4);
