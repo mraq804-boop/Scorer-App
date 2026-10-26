@@ -9,6 +9,8 @@ Offline-first cricket scoring app for the phone. Score a match with no signal, t
 ## Docs
 - [Design spec](docs/superpowers/specs/2026-10-23-score-and-share-design.md)
 - [Implementation plan](docs/superpowers/plans/2026-10-23-score-and-share.md)
+- [Architecture](docs/ARCHITECTURE.md): event flow, wire shapes, security model, offline design, tests
+- [Deployment](docs/DEPLOYMENT.md): Supabase and Vercel setup, pre-launch and post-deploy checks, free-tier limits
 
 ## Develop
 ```bash
@@ -21,6 +23,7 @@ Fill in `.env.local` with the dev Supabase project's values. Then:
 ```bash
 npm run dev
 ```
+The service worker is only registered in a production build, so offline behaviour needs `npm run build` and `npm start`.
 
 ## Check
 ```bash
@@ -35,3 +38,30 @@ npm test
 ```bash
 npm run build
 ```
+`npm run build` reads `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` when the code is first imported, and bakes every `NEXT_PUBLIC_*` value into the build. Use the real values from `.env.local`, or, with no project yet, build-only placeholders (PowerShell: `$env:NAME = "value"`):
+```bash
+export NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co
+export NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_placeholder_build_only
+export NEXT_PUBLIC_SITE_URL=http://localhost:3200
+```
+
+## Preview and end-to-end tests
+The production preview and the Playwright tests use port **3200** (family-home uses 3100).
+```bash
+npm run build
+```
+```bash
+npm start -- -p 3200
+```
+```bash
+npx playwright test
+```
+- `npx playwright test` starts `next start -p 3200` itself, or reuses a server already on that port. The server runs the last build, so rebuild after changing code or public env, and stop an old server first.
+- It runs a desktop Edge project and a Pixel 7 project. Set `E2E_CHANNEL` to use another browser channel (the default is `msedge`), or `E2E_BASE_URL` to test an already-running site.
+- Specs that need Supabase are skipped unless `E2E_BACKEND=1`. They need a real development project in `.env.local` and a build made with it, and they write real matches: never run them against production.
+```bash
+E2E_BACKEND=1 npx playwright test --project=mobile
+```
+
+## Deploy
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).

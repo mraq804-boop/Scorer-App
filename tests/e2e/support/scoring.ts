@@ -48,6 +48,12 @@ export async function sendIn(page: Page, name: string) {
   await sheet.getByRole("button", { name: "Send in" }).click();
 }
 
+export async function nextBowler(page: Page, name: string) {
+  const sheet = page.getByRole("dialog", { name: "Next bowler" });
+  await sheet.getByLabel("Bowler's name").fill(name);
+  await sheet.getByRole("button", { name: "Bowl", exact: true }).click();
+}
+
 export async function changeStoredMatch(page: Page, matchId: string, change: "block" | "remove") {
   await page.evaluate(
     ({ id, change }) =>
