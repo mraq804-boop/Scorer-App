@@ -209,4 +209,8 @@ export const en = {
   "scorecard.dotBalls": "Dot balls",
   "scorecard.boundaryRuns": "Runs from boundaries",
   "scorecard.percent": "{pct}%",
+  "live.tab": "Live",
+  "live.commentary": "Commentary",
+  "live.notStarted": "The match hasn't started yet.",
+  "live.inningsBreak": "Innings break",
 } as const;

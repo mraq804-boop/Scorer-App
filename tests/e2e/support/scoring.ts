@@ -70,3 +70,23 @@ export async function changeStoredMatch(page: Page, matchId: string, change: "bl
     { id: matchId, change },
   );
 }
+
+export function matchCode(page: Page, matchId: string): Promise<string> {
+  return page.evaluate(
+    (id) =>
+      new Promise<string>((resolve, reject) => {
+        const request = indexedDB.open("cricket-scorer");
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+          const db = request.result;
+          const get = db.transaction("matches").objectStore("matches").get(id);
+          get.onerror = () => reject(get.error);
+          get.onsuccess = () => {
+            db.close();
+            resolve(get.result.code);
+          };
+        };
+      }),
+    matchId,
+  );
+}
