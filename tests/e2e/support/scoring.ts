@@ -6,6 +6,7 @@ type Name = "teamA" | "teamB" | "striker" | "nonStriker" | "bowler";
 export type Setup = { overs?: number; teamAPlayers?: number; names?: Partial<Record<Name, string>> };
 
 export const BLOCKED = "Not synced — scoring moved to another phone";
+export const NOT_OWNER = "Not synced — this phone's guest session no longer owns this match";
 
 export async function startMatch(page: Page, setup: Setup = {}): Promise<string> {
   const names = { teamA: "Lions", teamB: "Tigers", striker: "Ali", nonStriker: "Usman", bowler: "Hamza", ...setup.names };
@@ -54,7 +55,7 @@ export async function nextBowler(page: Page, name: string) {
   await sheet.getByRole("button", { name: "Bowl", exact: true }).click();
 }
 
-export async function changeStoredMatch(page: Page, matchId: string, change: "block" | "remove") {
+export async function changeStoredMatch(page: Page, matchId: string, change: "block" | "disown" | "remove") {
   await page.evaluate(
     ({ id, change }) =>
       new Promise<void>((resolve, reject) => {
@@ -67,7 +68,8 @@ export async function changeStoredMatch(page: Page, matchId: string, change: "bl
           if (change === "remove") store.delete(id);
           else {
             const get = store.get(id);
-            get.onsuccess = () => store.put({ ...get.result, syncState: "blocked", blockedReason: "scoring_moved" });
+            const blockedReason = change === "disown" ? "not_owner" : "scoring_moved";
+            get.onsuccess = () => store.put({ ...get.result, syncState: "blocked", blockedReason });
           }
           tx.oncomplete = () => {
             db.close();

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { BLOCKED, changeStoredMatch, runs, score, sendIn, startMatch, wicket } from "./support/scoring";
+import { BLOCKED, NOT_OWNER, changeStoredMatch, runs, score, sendIn, startMatch, wicket } from "./support/scoring";
 
 test("scores an over with extras", async ({ page }) => {
   await startMatch(page);
@@ -169,10 +169,24 @@ test("a blocked match is read-only", async ({ page }) => {
   await changeStoredMatch(page, id, "block");
   await page.reload();
   await expect(page.getByRole("alert").filter({ hasText: BLOCKED })).toBeVisible();
+  await expect(page.getByTestId("sync-chip")).toHaveText(BLOCKED);
   await expect(score(page)).toHaveText("1/0 (0.1)");
   await expect(page.getByTestId("run-1")).toBeDisabled();
   await expect(page.getByTestId("wicket")).toBeDisabled();
   await expect(page.getByTestId("undo")).toBeDisabled();
+});
+
+test("a match this phone's guest session no longer owns says so, not that scoring moved", async ({ page }) => {
+  const id = await startMatch(page);
+  await runs(page, 1);
+  await expect(score(page)).toHaveText("1/0 (0.1)");
+
+  await changeStoredMatch(page, id, "disown");
+  await page.reload();
+  await expect(page.getByRole("alert").filter({ hasText: NOT_OWNER })).toBeVisible();
+  await expect(page.getByTestId("sync-chip")).toHaveText(NOT_OWNER);
+  await expect(page.getByText(BLOCKED)).toHaveCount(0);
+  await expect(page.getByTestId("run-1")).toBeDisabled();
 });
 
 test("a ball that can't be saved is not shown", async ({ page }) => {

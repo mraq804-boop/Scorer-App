@@ -65,6 +65,7 @@ export const en = {
   "sync.saved": "Saved on phone",
   "sync.synced": "Synced",
   "sync.blocked": "Not synced — scoring moved to another phone",
+  "sync.notOwner": "Not synced — this phone's guest session no longer owns this match",
   "prompt.allOut": "All out — end innings, or add a player?",
   "prompt.addPlayer": "Add a player",
   "score.notFound": "This match isn't saved on this phone.",

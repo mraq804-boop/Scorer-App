@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { GuestSession } from "@/components/guest-session";
 import { ThisOver } from "@/components/match/this-over";
 import { PwaRegister } from "@/components/pwa/pwa-register";
+import { blockedMessage } from "@/components/sync-chip";
 import { AllOutDialog } from "@/components/scoring/all-out-dialog";
 import { findBall } from "@/components/scoring/ball-patch";
 import { BatterSheet } from "@/components/scoring/batter-sheet";
@@ -160,7 +161,7 @@ function MatchScreen({ matchId }: { matchId: string }) {
       />
       {blocked && (
         <p role="alert" className="rounded-2xl bg-danger-soft p-3 text-sm font-semibold text-destructive">
-          {t("sync.blocked")}
+          {blockedMessage(local.blockedReason)}
         </p>
       )}
       {innings !== null && (

@@ -3,6 +3,7 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { blockedMessage } from "@/components/sync-chip";
 import { t } from "@/lib/i18n";
 import { formatWarning } from "@/lib/i18n/cricket";
 import { getLocalDb } from "@/lib/local/db";
@@ -62,8 +63,9 @@ export function useMatch(matchId: string): UseMatch {
       const db = getLocalDb();
       let appended: MatchEvent[];
       try {
-        if ((await db.matches.get(matchId))?.syncState === "blocked") {
-          toast.error(t("sync.blocked"));
+        const current = await db.matches.get(matchId);
+        if (current?.syncState === "blocked") {
+          toast.error(blockedMessage(current.blockedReason));
           return false;
         }
         appended = await appendEvents(db, matchId, drafts);
