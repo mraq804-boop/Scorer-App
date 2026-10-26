@@ -10,6 +10,7 @@ type OwnerMatchRow = { code: string; title: string; team_a: string; team_b: stri
 type OwnerMatchState = { status: string; scoring_device: string; last_seq: number };
 
 const PAGE_SIZE = 1000;
+const PAGE_TIMEOUT_MS = 120_000;
 
 export function canTakeOver(
   server: OwnerMatchState,
@@ -51,7 +52,9 @@ async function fetchOwnerEvents(client: SupabaseClient, matchId: string, from: n
   const events: MatchEvent[] = [];
   let after = from;
   for (;;) {
-    const { data, error } = await client.rpc("get_owner_events", { p_match: matchId, p_after: after });
+    const { data, error } = await client
+      .rpc("get_owner_events", { p_match: matchId, p_after: after })
+      .abortSignal(AbortSignal.timeout(PAGE_TIMEOUT_MS));
     if (error !== null) throw new Error(error.message);
     if (!Array.isArray(data)) throw new Error("Unexpected events response");
     const page = data as MatchEvent[];

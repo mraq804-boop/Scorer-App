@@ -18,7 +18,8 @@ export type SyncLoopOptions = {
 
 type Loop = { trigger: () => void; stop: () => void };
 
-const BATCH_SIZE = 200;
+const BATCH_SIZE = 50;
+const MIN_BATCH_SIZE = 10;
 const MAX_RESEND_ROUNDS = 3;
 const BASE_DELAY_MS = 2000;
 const MAX_DELAY_MS = 60000;
@@ -27,6 +28,7 @@ export const PENDING_CLAIM_KEY = "pendingClaim";
 
 let activeLoop: Loop | undefined;
 const refusedUntil = new Map<string, number>();
+const batchSizes = new Map<string, number>();
 
 export function nextDelay(attempt: number): number {
   return Math.min(MAX_DELAY_MS, BASE_DELAY_MS * 2 ** attempt);
@@ -38,6 +40,14 @@ function isUnsynced(match: LocalMatch): boolean {
 
 function isHeldBack(matchId: string): boolean {
   return Date.now() < (refusedUntil.get(matchId) ?? 0);
+}
+
+function batchSizeFor(matchId: string): number {
+  return batchSizes.get(matchId) ?? BATCH_SIZE;
+}
+
+function shrinkBatch(matchId: string): void {
+  batchSizes.set(matchId, Math.max(MIN_BATCH_SIZE, Math.floor(batchSizeFor(matchId) / 2)));
 }
 
 async function claimSettled(db: LocalDb, claim: SyncOptions["claim"]): Promise<boolean> {
@@ -112,7 +122,7 @@ async function pushPending(db: LocalDb, matchId: string, push: PushFn): Promise<
       continue;
     }
 
-    const batch = events.filter((event) => event.seq > match.syncedSeq).slice(0, BATCH_SIZE);
+    const batch = events.filter((event) => event.seq > match.syncedSeq).slice(0, batchSizeFor(matchId));
     const target = batch.at(-1)?.seq ?? match.lastSeq;
     const result = await push({ match: pushMatch(match, events), device, events: batch });
 
@@ -126,11 +136,13 @@ async function pushPending(db: LocalDb, matchId: string, push: PushFn): Promise<
         await db.matches.update(matchId, { code: newMatchCode() });
         continue;
       }
+      if (result.error === "network") shrinkBatch(matchId);
       if (result.error === "unknown") refusedUntil.set(matchId, Date.now() + REFUSED_DELAY_MS);
       return "pending";
     }
 
     refusedUntil.delete(matchId);
+    batchSizes.delete(matchId);
     await recordProgress(db, matchId, Math.min(result.lastSeq, match.lastSeq));
     if (result.lastSeq < target) {
       resendRounds += 1;

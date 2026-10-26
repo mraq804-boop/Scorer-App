@@ -21,6 +21,10 @@ const stops: Array<() => void> = [];
 const NETWORK: PushResult = { ok: false, error: "network" };
 const REFUSED: PushResult = { ok: false, error: "unknown" };
 
+function strikeSwaps(count: number): EventDraft[] {
+  return Array.from({ length: count }, (): EventDraft => ({ type: "strike_swapped" }));
+}
+
 function freshDb(): LocalDb {
   const db = new LocalDb(`test-${crypto.randomUUID()}`);
   opened.push(db);
@@ -347,18 +351,93 @@ describe("syncMatch", () => {
     expect(await db.matches.get(match.id)).toMatchObject({ syncedSeq: 0, syncState: "pending" });
   });
 
-  it("batches of 200", async () => {
+  it("batches of 50", async () => {
     const db = freshDb();
     const match = await createLocalMatch(db, setup());
-    await appendEvents(db, match.id, Array.from({ length: 445 }, (): EventDraft => ({ type: "strike_swapped" })));
+    await appendEvents(db, match.id, strikeSwaps(445));
     const fake = server();
 
     expect(await syncMatch(db, match.id, fake.push)).toBe("synced");
 
-    expect(fake.calls).toHaveLength(3);
-    expect(fake.calls.map((call) => call.events.length)).toEqual([200, 200, 50]);
+    expect(fake.calls.map((call) => call.events.length)).toEqual([50, 50, 50, 50, 50, 50, 50, 50, 50]);
     expect(fake.seqs().flat()).toEqual(Array.from({ length: 450 }, (_, i) => i + 1));
     expect(await db.matches.get(match.id)).toMatchObject({ syncedSeq: 450, lastSeq: 450, syncState: "synced" });
+  });
+
+  it("halves the next batch after each network failure down to 10, and goes back to 50 after a success", async () => {
+    const db = freshDb();
+    const match = await createLocalMatch(db, setup());
+    await appendEvents(db, match.id, strikeSwaps(295));
+    const fake = server([NETWORK, NETWORK, NETWORK, NETWORK, NETWORK]);
+
+    for (let attempt = 0; attempt < 5; attempt++) expect(await syncMatch(db, match.id, fake.push)).toBe("pending");
+    expect(await syncMatch(db, match.id, fake.push)).toBe("synced");
+
+    expect(fake.calls.map((call) => call.events.length)).toEqual([50, 25, 12, 10, 10, 10, 50, 50, 50, 50, 50, 40]);
+    expect(fake.seqs().slice(5).flat()).toEqual(Array.from({ length: 300 }, (_, i) => i + 1));
+    expect(await db.matches.get(match.id)).toMatchObject({ syncedSeq: 300, lastSeq: 300, syncState: "synced" });
+    expect(await loadEvents(db, match.id)).toHaveLength(300);
+  });
+
+  it("keeps the smaller batch for the next pass and the next push of the same match", async () => {
+    const db = freshDb();
+    const match = await createLocalMatch(db, setup());
+    await appendEvents(db, match.id, strikeSwaps(95));
+    const fake = server([NETWORK]);
+
+    expect(await syncAll(db, fake.push, {})).toBe("pending");
+    expect(await syncAll(db, fake.push, {})).toBe("synced");
+
+    expect(fake.calls.map((call) => call.events.length)).toEqual([50, 25, 50, 25]);
+  });
+
+  it("sizes batches per match, so another match's success does not undo a shrunken batch", async () => {
+    const db = freshDb();
+    const backlog = await createLocalMatch(db, setup());
+    await appendEvents(db, backlog.id, strikeSwaps(95));
+    await db.matches.update(backlog.id, { updatedAt: "2098-01-01T00:00:00.000Z" });
+    const live = await createLocalMatch(db, setup());
+    const fake = server([NETWORK]);
+    const sent = () => fake.calls.map((call) => [call.match.id === backlog.id ? "backlog" : "live", call.events.length]);
+
+    expect(await syncAll(db, fake.push, {})).toBe("pending");
+    await addBalls(db, live.id, 1);
+    await db.matches.update(live.id, { updatedAt: "2099-01-01T00:00:00.000Z" });
+    expect(await syncAll(db, fake.push, {})).toBe("synced");
+
+    expect(sent()).toEqual([["backlog", 50], ["live", 5], ["live", 1], ["backlog", 25], ["backlog", 50], ["backlog", 25]]);
+  });
+
+  it.each([
+    ["not_signed_in", { ok: false, error: "not_signed_in" }],
+    ["unknown", REFUSED],
+    ["code_taken", { ok: false, error: "code_taken" }],
+  ] as const)("does not shrink the batch after %s", async (_name, failure) => {
+    const db = freshDb();
+    const match = await createLocalMatch(db, setup());
+    await appendEvents(db, match.id, strikeSwaps(95));
+    const fake = server([failure, failure]);
+
+    await syncMatch(db, match.id, fake.push);
+    await syncMatch(db, match.id, fake.push);
+
+    expect(fake.calls[0].events).toHaveLength(50);
+    expect(fake.calls[1].events).toHaveLength(50);
+  });
+
+  it("does not drop or change a ball when it resends smaller batches", async () => {
+    const db = freshDb();
+    const match = await createLocalMatch(db, setup());
+    await appendEvents(db, match.id, strikeSwaps(95));
+    const before = await loadEvents(db, match.id);
+    const fake = server([NETWORK, NETWORK]);
+
+    await syncMatch(db, match.id, fake.push);
+    await syncMatch(db, match.id, fake.push);
+    await syncMatch(db, match.id, fake.push);
+
+    expect(fake.calls.slice(2).flatMap((call) => call.events)).toEqual(before);
+    expect(await loadEvents(db, match.id)).toEqual(before);
   });
 
   it("keeps a ball appended while a push is in flight and syncs it in the same run", async () => {

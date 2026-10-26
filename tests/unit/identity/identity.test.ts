@@ -41,6 +41,7 @@ function freshDb(): LocalDb {
 
 function fakeClient(options: FakeOptions = {}) {
   const order: string[] = [];
+  const signals: Array<{ rpc: string; signal: AbortSignal }> = [];
   const select = vi.fn();
   const eq = vi.fn();
   const single = vi.fn(async () =>
@@ -70,15 +71,23 @@ function fakeClient(options: FakeOptions = {}) {
         return { data: {}, error: null };
       }),
     },
-    rpc: vi.fn(async (name: string, args: Record<string, unknown> = {}) => {
+    rpc: vi.fn((name: string, args: Record<string, unknown> = {}) => {
       order.push(`rpc:${name}`);
-      const handler = options.rpc?.[name];
-      if (handler === undefined) throw new Error(`unexpected rpc ${name}`);
-      return handler(args);
+      const call = (async () => {
+        const handler = options.rpc?.[name];
+        if (handler === undefined) throw new Error(`unexpected rpc ${name}`);
+        return handler(args);
+      })();
+      return Object.assign(call, {
+        abortSignal: (signal: AbortSignal) => {
+          signals.push({ rpc: name, signal });
+          return call;
+        },
+      });
     }),
     from,
   };
-  return { client: raw as unknown as SupabaseClient, raw, order, select, eq };
+  return { client: raw as unknown as SupabaseClient, raw, order, select, eq, signals };
 }
 
 function setup(): MatchSetup {
@@ -97,6 +106,7 @@ function stubOnline(online: boolean): void {
 }
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   await Promise.all(opened.splice(0).map((db) => db.delete()));
 });
@@ -509,6 +519,21 @@ describe("takeOverScoring", () => {
     expect(events).toHaveLength(match.events.length);
     expect(events.map((event) => event.seq)).toEqual(match.events.map((event) => event.seq));
     expect((await db.matches.get(matchId))?.syncedSeq).toBe(match.events.length);
+  });
+
+  it("gives every owner-events page call its own 120 second signal and no other call one", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    const db = freshDb();
+    const match = serverMatch(PAGE + 20);
+    const { client, signals } = serverFor(match.events, match.state.rules);
+
+    await takeOverScoring(client, db, crypto.randomUUID());
+
+    expect(timeout).toHaveBeenCalledTimes(3);
+    expect(timeout).toHaveBeenCalledWith(120_000);
+    expect(signals.map((call) => call.rpc)).toEqual(["get_owner_events", "get_owner_events", "get_owner_events"]);
+    expect(signals.map((call) => call.signal)).toEqual(timeout.mock.results.map((result) => result.value));
+    expect(new Set(signals.map((call) => call.signal)).size).toBe(3);
   });
 
   it("replaces a fully synced local copy without orphaning anything", async () => {

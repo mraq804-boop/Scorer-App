@@ -33,7 +33,7 @@ E2E_BACKEND=1 npx playwright test tests/e2e/live.spec.ts --project=mobile
 - [ ] **An anonymous viewer can join the private `match:<id>` channel with the publishable key and receives broadcasts.** The `viewer sees balls live` spec blocks the polling route, so it only passes if a Realtime broadcast delivers the next ball.
 - [ ] **`realtime.send` from the trigger delivers.** The same spec proves it. Failures inside the trigger are only logged as warnings and never fail the push, so also look for warnings from `realtime.send` under Logs → Postgres after a scoring session.
 - [ ] **The `match_topic_read` policy on `realtime.messages` applies cleanly.** `db push` finishes without error, and the policy is listed under Authentication → Policies → `realtime.messages`.
-- [ ] **A 500-event push finishes inside the statement timeout.** The app sends at most 200 events per call, but the RPC accepts 500 and runs one insert and one broadcast per event. Time it with a throwaway script and `node --env-file=.env.local push-500.mjs` (the development project must have CAPTCHA off):
+- [ ] **A 500-event push finishes inside the statement timeout.** The app sends at most 50 events per call, but the RPC accepts 500 and runs one insert and one broadcast per event. Time it with a throwaway script and `node --env-file=.env.local push-500.mjs` (the development project must have CAPTCHA off):
   ```js
   import { createClient } from "@supabase/supabase-js";
 
