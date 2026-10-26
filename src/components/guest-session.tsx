@@ -4,7 +4,7 @@ import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import { useEffect, useRef, useState } from "react";
 import { publicEnv } from "@/lib/env";
 import { completeClaim } from "@/lib/identity/google";
-import { ensureGuestSession } from "@/lib/identity/guest";
+import { guestSessionKeeper } from "@/lib/identity/guest";
 import { getLocalDb } from "@/lib/local/db";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
 import { supabasePush } from "@/lib/sync/push";
@@ -35,21 +35,10 @@ export function GuestSession() {
         else widget.current.reset();
       });
 
-    const ensureSession = async () => {
-      const outcome = await ensureGuestSession(client, siteKey === undefined ? undefined : getCaptchaToken).catch(
-        () => undefined,
-      );
+    const session = guestSessionKeeper(client, siteKey === undefined ? undefined : getCaptchaToken, (outcome) => {
       if (outcome === "created" || outcome === "existing") setCaptchaMounted(false);
       if (outcome === "created") requestSync();
-    };
-
-    const isReady = async () => {
-      try {
-        return (await client.auth.getSession()).data.session !== null;
-      } catch {
-        return false;
-      }
-    };
+    });
 
     const stopSync = startSyncLoop({
       db,
@@ -57,11 +46,11 @@ export function GuestSession() {
       claim: async () => {
         await completeClaim(client, db);
       },
-      isReady,
+      isReady: session.isReady,
     });
-    const onOnline = () => void ensureSession();
+    const onOnline = () => void session.ensure();
     window.addEventListener("online", onOnline);
-    void ensureSession();
+    void session.ensure();
 
     return () => {
       window.removeEventListener("online", onOnline);

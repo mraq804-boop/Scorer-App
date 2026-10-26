@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { completeClaim, startGoogleSignIn } from "@/lib/identity/google";
-import { ensureGuestSession } from "@/lib/identity/guest";
+import { ensureGuestSession, guestSessionKeeper } from "@/lib/identity/guest";
 import { takeOverScoring } from "@/lib/identity/takeover";
 import { LocalDb } from "@/lib/local/db";
 import type { StoredEvent } from "@/lib/local/db";
@@ -11,6 +11,8 @@ import type { MatchSetup } from "@/lib/local/matches";
 import { defaultRules, deliveryDraft, replay } from "@/lib/scoring";
 import type { MatchEvent, Rules } from "@/lib/scoring";
 import { summarize } from "@/lib/share/summary";
+import type { PushFn } from "@/lib/sync/push";
+import { nextDelay, requestSync, startSyncLoop } from "@/lib/sync/sync";
 import { TestMatch } from "../../helpers/match";
 
 type Reply = { data: unknown; error: { message: string } | null; status?: number };
@@ -143,6 +145,142 @@ describe("ensureGuestSession", () => {
     stubOnline(true);
     const { client } = fakeClient({ signInError: new Error("captcha failed") });
     await expect(ensureGuestSession(client, async () => "bad")).rejects.toThrow("captcha failed");
+  });
+});
+
+describe("guestSessionKeeper", () => {
+  function deferred<T>() {
+    let resolve: (value: T) => void = () => undefined;
+    const promise = new Promise<T>((r) => {
+      resolve = r;
+    });
+    return { promise, resolve };
+  }
+
+  async function settle(): Promise<void> {
+    for (let i = 0; i < 20; i++) await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+
+  it("is ready without signing in when a session exists", async () => {
+    stubOnline(true);
+    const { client, raw } = fakeClient({ session: ANONYMOUS });
+    const onSettled = vi.fn();
+    const keeper = guestSessionKeeper(client, undefined, onSettled);
+
+    expect(await keeper.isReady()).toBe(true);
+    await settle();
+    expect(raw.auth.signInAnonymously).not.toHaveBeenCalled();
+    expect(onSettled).not.toHaveBeenCalled();
+  });
+
+  it("signs in when the sync loop finds no session and the phone is online", async () => {
+    stubOnline(true);
+    const { client, raw } = fakeClient();
+    const onSettled = vi.fn();
+    const keeper = guestSessionKeeper(client, async () => "turnstile-token", onSettled);
+
+    expect(await keeper.isReady()).toBe(false);
+    await settle();
+
+    expect(raw.auth.signInAnonymously).toHaveBeenCalledWith({ options: { captchaToken: "turnstile-token" } });
+    expect(onSettled).toHaveBeenCalledWith("created");
+  });
+
+  it("does not try to sign in while the phone is offline", async () => {
+    stubOnline(false);
+    const getCaptchaToken = vi.fn(async () => "turnstile-token");
+    const { client, raw } = fakeClient();
+    const keeper = guestSessionKeeper(client, getCaptchaToken, vi.fn());
+
+    expect(await keeper.isReady()).toBe(false);
+    await settle();
+
+    expect(getCaptchaToken).not.toHaveBeenCalled();
+    expect(raw.auth.signInAnonymously).not.toHaveBeenCalled();
+  });
+
+  it("tries again on the next check after a sign-in fails", async () => {
+    stubOnline(true);
+    const options: FakeOptions = { signInError: new Error("rate limited") };
+    const { client, raw } = fakeClient(options);
+    const onSettled = vi.fn();
+    const keeper = guestSessionKeeper(client, undefined, onSettled);
+
+    await keeper.isReady();
+    await settle();
+    expect(onSettled).toHaveBeenLastCalledWith(undefined);
+
+    delete options.signInError;
+    await keeper.isReady();
+    await settle();
+
+    expect(raw.auth.signInAnonymously).toHaveBeenCalledTimes(2);
+    expect(onSettled).toHaveBeenLastCalledWith("created");
+  });
+
+  it("keeps one sign-in waiting for its captcha token and uses the token when it comes", async () => {
+    stubOnline(true);
+    const token = deferred<string>();
+    const getCaptchaToken = vi.fn(() => token.promise);
+    const { client, raw } = fakeClient();
+    const onSettled = vi.fn();
+    const keeper = guestSessionKeeper(client, getCaptchaToken, onSettled);
+
+    await keeper.isReady();
+    await keeper.isReady();
+    void keeper.ensure();
+    await settle();
+    expect(getCaptchaToken).toHaveBeenCalledTimes(1);
+    expect(raw.auth.signInAnonymously).not.toHaveBeenCalled();
+
+    token.resolve("late-token");
+    await settle();
+
+    expect(raw.auth.signInAnonymously).toHaveBeenCalledTimes(1);
+    expect(raw.auth.signInAnonymously).toHaveBeenCalledWith({ options: { captchaToken: "late-token" } });
+    expect(onSettled).toHaveBeenCalledTimes(1);
+    expect(onSettled).toHaveBeenCalledWith("created");
+  });
+
+  it("retries a failed first sign-in on the sync loop's backoff until the balls sync", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      stubOnline(true);
+      const db = freshDb();
+      const match = await createLocalMatch(db, setup());
+      const options: FakeOptions = { signInError: new Error("captcha timed out") };
+      const { client, raw } = fakeClient(options);
+      raw.auth.signInAnonymously.mockImplementation(async () => {
+        if (options.signInError !== undefined) return { data: {}, error: options.signInError };
+        options.session = ANONYMOUS;
+        return { data: {}, error: null };
+      });
+      const pushed: number[][] = [];
+      const push: PushFn = async ({ events }) => {
+        pushed.push(events.map((event) => event.seq));
+        return { ok: true, lastSeq: events.at(-1)?.seq ?? 0 };
+      };
+      const keeper = guestSessionKeeper(client, undefined, (outcome) => {
+        if (outcome === "created") requestSync();
+      });
+      const stop = startSyncLoop({ db, push, claim: async () => {}, isReady: keeper.isReady });
+
+      try {
+        await vi.waitUntil(() => raw.auth.signInAnonymously.mock.calls.length === 1 && vi.getTimerCount() === 1);
+        expect(pushed).toEqual([]);
+
+        delete options.signInError;
+        await vi.advanceTimersByTimeAsync(nextDelay(0));
+        await vi.waitUntil(async () => (await db.matches.get(match.id))?.syncState === "synced");
+
+        expect(raw.auth.signInAnonymously).toHaveBeenCalledTimes(2);
+        expect(pushed).toEqual([[1, 2, 3, 4, 5]]);
+      } finally {
+        stop();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
