@@ -16,11 +16,13 @@ type BowlerSheetProps = {
   innings: InningsState;
   recent: readonly string[];
   busy: boolean;
-  undo: ReactNode;
+  undo?: ReactNode;
+  title?: string;
+  onClose?: () => void;
   onRecord: (drafts: EventDraft[]) => Promise<boolean>;
 };
 
-export function BowlerSheet({ state, innings, recent, busy, undo, onRecord }: BowlerSheetProps) {
+export function BowlerSheet({ state, innings, recent, busy, undo, title = t("bowler.title"), onClose, onRecord }: BowlerSheetProps) {
   const [name, setName] = useState("");
   const [error, setError] = useState<string>();
   const listId = useId();
@@ -28,6 +30,7 @@ export function BowlerSheet({ state, innings, recent, busy, undo, onRecord }: Bo
   const bowled = new Set(innings.bowling.map((line) => line.playerId));
 
   const bowl = (player: string, added: EventDraft[] = []) => void onRecord([...added, { type: "bowler_changed", player }]);
+  const previous = innings.bowling.filter((line) => line.playerId !== innings.bowler);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -41,16 +44,16 @@ export function BowlerSheet({ state, innings, recent, busy, undo, onRecord }: Bo
   }
 
   return (
-    <Drawer open dismissible={false}>
+    <Drawer open dismissible={onClose !== undefined} onOpenChange={(open) => !open && onClose?.()}>
       <DrawerContent aria-describedby={undefined} className="mx-auto max-w-md">
         <DrawerHeader>
-          <DrawerTitle className="text-xl font-bold">{t("bowler.title")}</DrawerTitle>
+          <DrawerTitle className="text-xl font-bold">{title}</DrawerTitle>
         </DrawerHeader>
         <form noValidate onSubmit={submit} className="flex flex-col gap-4 overflow-y-auto px-4">
-          {innings.bowling.length > 0 && (
+          {previous.length > 0 && (
             <section className="flex flex-col gap-2">
               <h3 className="text-sm font-medium">{t("bowler.previous")}</h3>
-              {innings.bowling.map((line) => (
+              {previous.map((line) => (
                 <Button
                   key={line.playerId}
                   type="button"

@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { formatCommentary, formatFigures, formatNeed, formatResult, formatScoreLine, formatWarning } from "@/lib/i18n/cricket";
+import {
+  formatCommentary,
+  formatDismissal,
+  formatFigures,
+  formatNeed,
+  formatResult,
+  formatScoreLine,
+  formatWarning,
+} from "@/lib/i18n/cricket";
 import { summarize } from "@/lib/share/summary";
 import { replay } from "@/lib/scoring";
-import type { CommentaryItem, Player } from "@/lib/scoring";
+import type { BatterLine, CommentaryItem, Player } from "@/lib/scoring";
 import { TestMatch } from "../helpers/match";
 
 const players: Record<string, Player> = {
@@ -219,5 +227,55 @@ describe("formatFigures", () => {
     const line = { playerId: "p-Hamza", legalBalls: 14, runs: 18, wickets: 1, wides: 0, noBalls: 0, maidens: 1, dots: 7 };
     expect(formatFigures(line, 6)).toBe("2.2-1-18-1");
     expect(formatFigures({ ...line, legalBalls: 16 }, 8)).toBe("2-1-18-1");
+  });
+});
+
+describe("formatDismissal", () => {
+  const named: Record<string, Player> = {
+    ...players,
+    "p-Zain": { id: "p-Zain", name: "Zain", team: "B" },
+    "p-Bilal": { id: "p-Bilal", name: "Bilal", team: "B" },
+  };
+
+  function line(overrides: Partial<BatterLine>): BatterLine {
+    return { playerId: "p-Ali", runs: 0, balls: 0, fours: 0, sixes: 0, dots: 0, out: null, retiredHurt: false, ...overrides };
+  }
+
+  function out(kind: NonNullable<BatterLine["out"]>["kind"], bowler: string | null, fielderName: string | null): string {
+    return formatDismissal(line({ out: { kind, bowler, fielderName } }), named);
+  }
+
+  it("writes each way of getting out", () => {
+    expect(out("caught", "p-Bilal", "Zain")).toBe("c Zain b Bilal");
+    expect(out("bowled", "p-Hamza", null)).toBe("b Hamza");
+    expect(out("run_out", null, "Zain")).toBe("run out (Zain)");
+    expect(out("stumped", "p-Bilal", "Zain")).toBe("st Zain b Bilal");
+    expect(out("lbw", "p-Bilal", null)).toBe("lbw b Bilal");
+    expect(out("hit_wicket", "p-Bilal", null)).toBe("hit wicket b Bilal");
+    expect(out("retired_out", null, null)).toBe("retired out");
+    expect(out("other", null, null)).toBe("out");
+  });
+
+  it("copes with a fielder that was not entered", () => {
+    expect(out("caught", "p-Bilal", null)).toBe("caught b Bilal");
+    expect(out("stumped", "p-Bilal", null)).toBe("stumped b Bilal");
+    expect(out("run_out", null, null)).toBe("run out");
+  });
+
+  it("says retired hurt and not out", () => {
+    expect(formatDismissal(line({ retiredHurt: true }), named)).toBe("retired hurt");
+    expect(formatDismissal(line({}), named)).toBe("not out");
+  });
+
+  it("falls back to the id for a bowler it does not know", () => {
+    expect(out("bowled", "p-Ghost", null)).toBe("b p-Ghost");
+  });
+
+  it("reads real engine output", () => {
+    const m = new TestMatch();
+    m.ball({ runs: 0, wicket: { kind: "caught", fielderName: "Zain" } });
+    const [ali, usman] = ["Ali", "Usman"].map((name) => m.inn.batting.find((b) => b.playerId === m.id(name)) as BatterLine);
+    expect(formatDismissal(ali, m.state.players)).toBe("c Zain b Hamza");
+    expect(formatDismissal(usman, m.state.players)).toBe("not out");
   });
 });

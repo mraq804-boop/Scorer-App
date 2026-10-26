@@ -2,6 +2,7 @@
 
 import { ChevronLeft } from "lucide-react";
 import { useId, useState } from "react";
+import { WITH_FIELDER } from "@/components/scoring/ball-patch";
 import { NameField, NameSuggestions } from "@/components/scoring/name-field";
 import { suggestNames } from "@/components/scoring/player-drafts";
 import { SegmentedControl } from "@/components/segmented-control";
@@ -15,7 +16,6 @@ import { nameSchema } from "@/lib/validation/match-setup";
 
 export type WicketBall = { runs: number; wicket: { kind: DismissalKind; playerOut?: string; fielderName: string | null } };
 
-const WITH_FIELDER: ReadonlySet<AvailableDismissal> = new Set(["caught", "run_out", "stumped"]);
 const WHICH_BATTER: ReadonlySet<AvailableDismissal> = new Set(["run_out", "retired_hurt", "retired_out"]);
 const RUNS_COMPLETED = [0, 1, 2, 3].map((runs) => ({ value: runs, label: String(runs) }));
 

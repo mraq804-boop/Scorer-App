@@ -9,7 +9,7 @@ import { getLocalDb } from "@/lib/local/db";
 import type { LocalDb, LocalMatch } from "@/lib/local/db";
 import { appendEvents, loadEvents } from "@/lib/local/matches";
 import { nextPrompt, replay } from "@/lib/scoring";
-import type { EventDraft, MatchEvent, MatchState, Prompt } from "@/lib/scoring";
+import type { EventDraft, MatchEvent, MatchState, Prompt, Warning } from "@/lib/scoring";
 import { requestSync } from "@/lib/sync/sync";
 
 export type UseMatch = {
@@ -25,13 +25,18 @@ export type UseMatch = {
 
 const NO_EVENTS: MatchEvent[] = [];
 
+function warningKey(warning: Warning): string {
+  return JSON.stringify(warning);
+}
+
 function warnAbout(db: LocalDb, matchId: string, appended: readonly MatchEvent[]): void {
   const ids = new Set(appended.map((event) => event.id));
   void loadEvents(db, matchId)
     .then((events) => {
       const state = replay(events);
+      const before = new Set(replay(events.filter((event) => !ids.has(event.id))).warnings.map(warningKey));
       for (const warning of state.warnings) {
-        if (ids.has(warning.eventId)) toast.warning(formatWarning(warning, state.players));
+        if (!before.has(warningKey(warning))) toast.warning(formatWarning(warning, state.players));
       }
     })
     .catch(() => undefined);
@@ -57,6 +62,10 @@ export function useMatch(matchId: string): UseMatch {
       const db = getLocalDb();
       let appended: MatchEvent[];
       try {
+        if ((await db.matches.get(matchId))?.syncState === "blocked") {
+          toast.error(t("sync.blocked"));
+          return false;
+        }
         appended = await appendEvents(db, matchId, drafts);
       } catch {
         toast.error(t("score.saveFailed"));

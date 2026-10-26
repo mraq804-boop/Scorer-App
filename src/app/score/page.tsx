@@ -8,9 +8,12 @@ import { toast } from "sonner";
 import { GuestSession } from "@/components/guest-session";
 import { PwaRegister } from "@/components/pwa/pwa-register";
 import { AllOutDialog } from "@/components/scoring/all-out-dialog";
+import { findBall } from "@/components/scoring/ball-patch";
 import { BatterSheet } from "@/components/scoring/batter-sheet";
 import { BowlerSheet } from "@/components/scoring/bowler-sheet";
+import { EditBallSheet } from "@/components/scoring/edit-ball-sheet";
 import { ExtrasToggles, NO_EXTRAS } from "@/components/scoring/extras-toggles";
+import { MatchMenu } from "@/components/scoring/match-menu";
 import { RunPad } from "@/components/scoring/run-pad";
 import { ScoreHeader } from "@/components/scoring/score-header";
 import { StartInningsSheet } from "@/components/scoring/start-innings-sheet";
@@ -63,6 +66,7 @@ function MatchScreen({ matchId }: { matchId: string }) {
   const recent = useRecentNames();
   const [extras, setExtras] = useState(NO_EXTRAS);
   const [wicketOpen, setWicketOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [autoEndFailedAt, setAutoEndFailedAt] = useState<string | null>(null);
   const autoEndedAt = useRef<string | null>(null);
   const latestUndo = useRef<() => void>(() => undefined);
@@ -133,17 +137,25 @@ function MatchScreen({ matchId }: { matchId: string }) {
     </Button>
   );
   const prompted = !blocked && innings !== null && state.status === "in_progress" ? prompt?.kind : undefined;
+  const editing = blocked || editingId === null ? null : findBall(events, state, editingId);
   const sheet = { state, recent, busy, undo: sheetUndo, onRecord: record };
 
   return (
     <div data-match-id={matchId} className="flex flex-1 flex-col gap-4 pb-4">
-      <ScoreHeader local={local} state={state} innings={innings} />
+      <ScoreHeader
+        local={local}
+        state={state}
+        innings={innings}
+        actions={<MatchMenu state={state} blocked={blocked} busy={busy} recent={recent} onRecord={record} />}
+      />
       {blocked && (
         <p role="alert" className="rounded-2xl bg-danger-soft p-3 text-sm font-semibold text-destructive">
           {t("sync.blocked")}
         </p>
       )}
-      {innings !== null && <ThisOver innings={innings} ballsPerOver={state.rules.ballsPerOver} />}
+      {innings !== null && (
+        <ThisOver innings={innings} ballsPerOver={state.rules.ballsPerOver} onSelect={blocked ? undefined : setEditingId} />
+      )}
 
       <div className="mt-auto flex flex-col gap-3">
         {state.result !== null && (
@@ -205,6 +217,15 @@ function MatchScreen({ matchId }: { matchId: string }) {
       {prompted === "choose_bowler" && innings !== null && <BowlerSheet innings={innings} {...sheet} />}
       {prompted === "all_out" && innings !== null && <AllOutDialog innings={innings} {...sheet} />}
       {!blocked && prompt?.kind === "start_innings" && <StartInningsSheet innings={prompt.innings} {...sheet} />}
+      {editing !== null && (
+        <EditBallSheet
+          state={state}
+          ball={editing}
+          busy={busy}
+          onClose={() => setEditingId(null)}
+          onSave={(patch) => record([{ type: "correct", target: editing.event.id, patch }])}
+        />
+      )}
       {wicketOpen && scoring && innings !== null && (
         <WicketSheet
           state={state}

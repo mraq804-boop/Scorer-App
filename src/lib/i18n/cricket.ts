@@ -1,5 +1,5 @@
 import { formatOvers } from "@/lib/scoring";
-import type { BowlerLine, CommentaryItem, InningsState, MatchState, Player, Result, Warning } from "@/lib/scoring";
+import type { BatterLine, BowlerLine, CommentaryItem, InningsState, MatchState, Player, Result, Warning } from "@/lib/scoring";
 import { t } from "./index";
 
 type Unit = "run" | "bye" | "legBye" | "wicket" | "ball" | "over";
@@ -87,4 +87,30 @@ export function formatFigures(line: BowlerLine, ballsPerOver: number): string {
     runs: line.runs,
     wickets: line.wickets,
   });
+}
+
+export function formatDismissal(line: BatterLine, players: Record<string, Player>): string {
+  const { out } = line;
+  if (out === null) return t(line.retiredHurt ? "dismissal.text.retiredHurt" : "dismissal.text.notOut");
+  const bowler = out.bowler === null ? "" : playerName(players, out.bowler);
+  const fielder = out.fielderName ?? "";
+  const withFielder = out.fielderName !== null;
+  switch (out.kind) {
+    case "bowled":
+      return t("dismissal.text.bowled", { bowler });
+    case "caught":
+      return withFielder ? t("dismissal.text.caught", { fielder, bowler }) : t("dismissal.text.caughtNoFielder", { bowler });
+    case "lbw":
+      return t("dismissal.text.lbw", { bowler });
+    case "run_out":
+      return withFielder ? t("dismissal.text.runOut", { fielder }) : t("dismissal.text.runOutNoFielder");
+    case "stumped":
+      return withFielder ? t("dismissal.text.stumped", { fielder, bowler }) : t("dismissal.text.stumpedNoFielder", { bowler });
+    case "hit_wicket":
+      return t("dismissal.text.hitWicket", { bowler });
+    case "retired_out":
+      return t("dismissal.text.retiredOut");
+    case "other":
+      return t("dismissal.text.other");
+  }
 }

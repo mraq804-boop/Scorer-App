@@ -21,7 +21,7 @@ const BALLS_PER_OVER = [
   { value: 8, label: "8" },
 ] as const;
 
-function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+export function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
   const id = useId();
   return (
     <div className="flex min-h-12 items-center justify-between gap-4">

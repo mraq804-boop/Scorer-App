@@ -19,7 +19,15 @@ function toneOf(item: CommentaryItem | undefined): Tone {
   return "plain";
 }
 
-export function ThisOver({ innings, ballsPerOver }: { innings: InningsState; ballsPerOver: number }) {
+type ThisOverProps = {
+  innings: InningsState;
+  ballsPerOver: number;
+  onSelect?: (eventId: string) => void;
+};
+
+const CHIP = "num grid h-10 min-w-10 place-items-center rounded-full px-2 text-sm font-bold";
+
+export function ThisOver({ innings, ballsPerOver, onSelect }: ThisOverProps) {
   const over = innings.overs.at(-1);
   const finished = over !== undefined && over.index < Math.floor(innings.legalBalls / ballsPerOver);
   const items = new Map(innings.commentary.map((item) => [item.eventId, item]));
@@ -29,17 +37,26 @@ export function ThisOver({ innings, ballsPerOver }: { innings: InningsState; bal
         {finished ? t("score.lastOver") : t("score.thisOver")}
       </h2>
       <ol data-testid="this-over" className="flex min-h-10 flex-wrap gap-1.5">
-        {over?.balls.map((chip) => (
-          <li
-            key={chip.eventId}
-            className={cn(
-              "num grid h-10 min-w-10 place-items-center rounded-full px-2 text-sm font-bold",
-              TONES[toneOf(items.get(chip.eventId))],
-            )}
-          >
-            {chip.label}
-          </li>
-        ))}
+        {over?.balls.map((chip) => {
+          const item = items.get(chip.eventId);
+          const tone = cn(CHIP, TONES[toneOf(item)]);
+          return (
+            <li key={chip.eventId}>
+              {onSelect === undefined || item === undefined ? (
+                <span className={tone}>{chip.label}</span>
+              ) : (
+                <button
+                  type="button"
+                  aria-label={t("edit.chip", { ball: item.ballLabel, label: chip.label })}
+                  onClick={() => onSelect(chip.eventId)}
+                  className={cn(tone, "outline-none focus-visible:ring-3 focus-visible:ring-ring/60 active:scale-95")}
+                >
+                  {chip.label}
+                </button>
+              )}
+            </li>
+          );
+        })}
       </ol>
     </section>
   );

@@ -1,4 +1,5 @@
 import { ChevronLeft } from "lucide-react";
+import type { ReactNode } from "react";
 import { SyncChip } from "@/components/sync-chip";
 import { t } from "@/lib/i18n";
 import { formatFigures, formatNeed } from "@/lib/i18n/cricket";
@@ -7,7 +8,7 @@ import { formatOvers, requiredRunRate, runRate } from "@/lib/scoring";
 import type { BatterLine, BowlerLine, InningsState, MatchState } from "@/lib/scoring";
 import { cn } from "@/lib/utils";
 
-type ScoreHeaderProps = { local: LocalMatch; state: MatchState; innings: InningsState | null };
+type ScoreHeaderProps = { local: LocalMatch; state: MatchState; innings: InningsState | null; actions?: ReactNode };
 
 function playerName(state: MatchState, id: string): string {
   return state.players[id]?.name ?? id;
@@ -99,7 +100,7 @@ function Scoreboard({ state, innings }: { state: MatchState; innings: InningsSta
   );
 }
 
-export function ScoreHeader({ local, state, innings }: ScoreHeaderProps) {
+export function ScoreHeader({ local, state, innings, actions }: ScoreHeaderProps) {
   return (
     <header className="flex flex-col gap-3">
       <div className="flex min-h-12 items-center gap-2">
@@ -112,6 +113,7 @@ export function ScoreHeader({ local, state, innings }: ScoreHeaderProps) {
         </a>
         <h1 className="min-w-16 flex-1 truncate text-lg font-bold">{state.title}</h1>
         <SyncChip match={local} className="shrink" />
+        {actions}
       </div>
       {innings !== null && <Scoreboard state={state} innings={innings} />}
     </header>
