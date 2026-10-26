@@ -8,7 +8,7 @@ import { LocalDb } from "@/lib/local/db";
 import { appendEvents, createLocalMatch, getDeviceId, loadEvents } from "@/lib/local/matches";
 import type { MatchSetup } from "@/lib/local/matches";
 import { supabasePush } from "@/lib/sync/push";
-import type { PushFn, PushResult } from "@/lib/sync/push";
+import type { PushError, PushFn, PushResult } from "@/lib/sync/push";
 import { REFUSED_DELAY_MS, nextDelay, requestSync, startSyncLoop, syncAll, syncMatch } from "@/lib/sync/sync";
 import { fromWire, toWire } from "@/lib/sync/wire";
 import { TestMatch } from "../../helpers/match";
@@ -19,7 +19,8 @@ const opened: LocalDb[] = [];
 const stops: Array<() => void> = [];
 
 const NETWORK: PushResult = { ok: false, error: "network" };
-const REFUSED: PushResult = { ok: false, error: "unknown" };
+const REFUSED: PushResult = { ok: false, error: "refused" };
+const UNKNOWN: PushResult = { ok: false, error: "unknown" };
 
 function strikeSwaps(count: number): EventDraft[] {
   return Array.from({ length: count }, (): EventDraft => ({ type: "strike_swapped" }));
@@ -182,26 +183,49 @@ describe("supabasePush", () => {
     });
   });
 
-  it.each(["not_signed_in", "not_owner", "scoring_moved", "code_taken"] as const)("maps the %s exception", async (message) => {
-    const client = clientWith(async () => ({ data: null, error: { message }, status: 400 }));
-    expect(await supabasePush(client)(args)).toEqual({ ok: false, error: message });
+  type ErrorCase = [name: string, status: number, error: { message: string; code?: string }, expected: PushError];
+
+  const MAPPING: ErrorCase[] = [
+    ["a request that never reached the server", 0, { message: "TypeError: Failed to fetch" }, "network"],
+    ["a request timeout", 408, { message: "Request Timeout" }, "network"],
+    ["too many requests", 429, { message: "Too Many Requests" }, "network"],
+    ["an internal server error", 500, { message: "internal error", code: "XX000" }, "network"],
+    ["a bad gateway", 502, { message: "<html>Bad Gateway</html>" }, "network"],
+    ["a schema cache reload", 503, { message: "Could not query the database for the schema cache. Retrying.", code: "PGRST002" }, "network"],
+    ["a gateway timeout", 504, { message: "Gateway Timeout" }, "network"],
+    ["a Cloudflare unknown error", 520, { message: "error code: 520" }, "network"],
+    ["a Cloudflare timeout", 524, { message: "error code: 524" }, "network"],
+    ["an expired token", 401, { message: "JWT expired", code: "PGRST301" }, "not_signed_in"],
+    ["a call made without a session", 401, { message: "permission denied for function push_match_events", code: "42501" }, "not_signed_in"],
+    ["the RPC's own not_signed_in", 400, { message: "not_signed_in", code: "P0001" }, "not_signed_in"],
+    ["not_owner", 400, { message: "not_owner", code: "P0001" }, "not_owner"],
+    ["scoring_moved", 400, { message: "scoring_moved", code: "P0001" }, "scoring_moved"],
+    ["code_taken", 400, { message: "code_taken", code: "P0001" }, "code_taken"],
+    ["invalid_event", 400, { message: "invalid_event", code: "P0001" }, "refused"],
+    ["too_many_events", 400, { message: "too_many_events", code: "P0001" }, "refused"],
+    ["quota_exceeded", 400, { message: "quota_exceeded", code: "P0001" }, "refused"],
+    ["a check constraint violation", 400, { message: 'new row for relation "matches" violates check constraint "matches_rules_size"', code: "23514" }, "refused"],
+    ["a not-null violation", 400, { message: 'null value in column "title" violates not-null constraint', code: "23502" }, "refused"],
+    ["a unique violation", 409, { message: 'duplicate key value violates unique constraint "match_events_pkey"', code: "23505" }, "refused"],
+    ["a foreign key violation", 409, { message: 'insert or update violates foreign key constraint "match_events_match_id_fkey"', code: "23503" }, "refused"],
+    ["a conflict without an error code", 409, { message: "Conflict" }, "refused"],
+    ["a constraint message without an error code", 400, { message: 'new row for relation "matches" violates check constraint "matches_rules_size"' }, "refused"],
+    ["an unexpected bad request", 400, { message: "something nobody planned for", code: "XX000" }, "unknown"],
+    ["a function missing from the schema cache", 404, { message: "Could not find the function public.push_match_events in the schema cache", code: "PGRST202" }, "unknown"],
+    ["a forbidden call", 403, { message: "permission denied", code: "42501" }, "unknown"],
+    ["an unreadable error body", 400, { message: "" }, "unknown"],
+  ];
+
+  it.each(MAPPING)("maps %s (status %i) to the right code", async (_name, status, error, expected) => {
+    const client = clientWith(async () => ({ data: null, error, status }));
+    expect(await supabasePush(client)(args)).toEqual({ ok: false, error: expected });
   });
 
-  it.each(["quota_exceeded", "invalid_event", "too_many_events", 'new row for relation "matches" violates check constraint "matches_rules_size"'])(
-    "maps every other server error (%s) to unknown",
-    async (message) => {
-      const client = clientWith(async () => ({ data: null, error: { message }, status: 400 }));
-      expect(await supabasePush(client)(args)).toEqual({ ok: false, error: "unknown" });
-    },
-  );
-
-  it("maps a failed fetch to network", async () => {
-    const failed = clientWith(async () => ({ data: null, error: { message: "TypeError: Failed to fetch" }, status: 0 }));
+  it("maps a thrown fetch to network", async () => {
     const thrown = clientWith(async () => {
       throw new TypeError("Failed to fetch");
     });
 
-    expect(await supabasePush(failed)(args)).toEqual({ ok: false, error: "network" });
     expect(await supabasePush(thrown)(args)).toEqual({ ok: false, error: "network" });
   });
 
@@ -296,7 +320,7 @@ describe("syncMatch", () => {
     expect(await loadEvents(db, match.id)).toHaveLength(5);
   });
 
-  it.each(["not_signed_in", "unknown"] as const)("leaves the match pending on %s", async (error) => {
+  it.each(["not_signed_in", "unknown", "refused"] as const)("leaves the match pending on %s", async (error) => {
     const db = freshDb();
     const match = await createLocalMatch(db, setup());
     const fake = server([{ ok: false, error }]);
@@ -410,7 +434,8 @@ describe("syncMatch", () => {
 
   it.each([
     ["not_signed_in", { ok: false, error: "not_signed_in" }],
-    ["unknown", REFUSED],
+    ["unknown", UNKNOWN],
+    ["refused", REFUSED],
     ["code_taken", { ok: false, error: "code_taken" }],
   ] as const)("does not shrink the batch after %s", async (_name, failure) => {
     const db = freshDb();
@@ -683,7 +708,7 @@ describe("syncAll", () => {
     expect(await db.matches.get(other.id)).toMatchObject({ syncedSeq: 6, syncState: "synced" });
   });
 
-  it.each([NETWORK, { ok: false, error: "not_signed_in" } as const])("retries at once after %o", async (failure) => {
+  it.each([NETWORK, UNKNOWN, { ok: false, error: "not_signed_in" } as const])("holds nothing back after %o: the next pass retries at once", async (failure) => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const db = freshDb();
     await createLocalMatch(db, setup());
@@ -692,6 +717,54 @@ describe("syncAll", () => {
     expect(await syncAll(db, fake.push, {})).toBe("pending");
     expect(await syncAll(db, fake.push, {})).toBe("synced");
     expect(fake.calls).toHaveLength(2);
+  });
+});
+
+describe("syncAll with the real push error mapping", () => {
+  it.each([
+    [429, { message: "Too Many Requests" }],
+    [502, { message: "Bad Gateway" }],
+    [503, { message: "Could not query the database for the schema cache. Retrying.", code: "PGRST002" }],
+    [524, { message: "error code: 524" }],
+    [401, { message: "JWT expired", code: "PGRST301" }],
+    [404, { message: "Could not find the function public.push_match_events in the schema cache", code: "PGRST202" }],
+  ])("sends the same balls again at once after HTTP %i, with no 15 minute hold", async (status, error) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const db = freshDb();
+    const match = await createLocalMatch(db, setup());
+    const replies = [{ data: null, error, status }, { data: 5, error: null, status: 200 }];
+    const rpc = vi.fn(async () => replies.shift());
+    const push = supabasePush({ rpc } as unknown as SupabaseClient);
+
+    expect(await syncAll(db, push, {})).toBe("pending");
+    expect(await syncAll(db, push, {})).toBe("synced");
+
+    expect(rpc).toHaveBeenCalledTimes(2);
+    expect(await db.matches.get(match.id)).toMatchObject({ syncedSeq: 5, syncState: "synced", blockedReason: null });
+  });
+
+  it.each([
+    [400, { message: "quota_exceeded", code: "P0001" }],
+    [400, { message: "invalid_event", code: "P0001" }],
+    [409, { message: "duplicate key value violates unique constraint", code: "23505" }],
+  ])("holds a match the server refused (HTTP %i %o) for 15 minutes and then sends every ball", async (status, error) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const db = freshDb();
+    const match = await createLocalMatch(db, setup());
+    const before = await loadEvents(db, match.id);
+    const replies = [{ data: null, error, status }, { data: 5, error: null, status: 200 }];
+    const rpc = vi.fn(async () => replies.shift());
+    const push = supabasePush({ rpc } as unknown as SupabaseClient);
+
+    expect(await syncAll(db, push, {})).toBe("pending");
+    vi.advanceTimersByTime(REFUSED_DELAY_MS - 1);
+    expect(await syncAll(db, push, {})).toBe("pending");
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(await loadEvents(db, match.id)).toEqual(before);
+
+    vi.advanceTimersByTime(1);
+    expect(await syncAll(db, push, {})).toBe("synced");
+    expect(rpc).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -930,6 +1003,20 @@ describe("startSyncLoop", () => {
 
     expect(Date.now() - refusedAt).toBeGreaterThanOrEqual(REFUSED_DELAY_MS);
     expect(passes).toBeGreaterThan(10);
+    await until(async () => (await db.matches.get(match.id))?.syncState === "synced");
+    expect(fake.calls).toHaveLength(2);
+  });
+
+  it("retries an unexpected error on the normal backoff instead of holding the match for 15 minutes", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const db = freshDb();
+    const match = await createLocalMatch(db, setup());
+    const fake = server([UNKNOWN]);
+    startLoop({ db, push: fake.push, claim, isReady: ready });
+    await until(() => fake.calls.length === 1 && vi.getTimerCount() === 1);
+
+    await vi.advanceTimersByTimeAsync(nextDelay(0));
+
     await until(async () => (await db.matches.get(match.id))?.syncState === "synced");
     expect(fake.calls).toHaveLength(2);
   });

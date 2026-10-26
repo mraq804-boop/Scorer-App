@@ -137,7 +137,7 @@ async function pushPending(db: LocalDb, matchId: string, push: PushFn): Promise<
         continue;
       }
       if (result.error === "network") shrinkBatch(matchId);
-      if (result.error === "unknown") refusedUntil.set(matchId, Date.now() + REFUSED_DELAY_MS);
+      if (result.error === "refused") refusedUntil.set(matchId, Date.now() + REFUSED_DELAY_MS);
       return "pending";
     }
 

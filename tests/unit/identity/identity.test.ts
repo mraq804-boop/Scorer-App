@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { completeClaim, startGoogleSignIn } from "@/lib/identity/google";
-import { ensureGuestSession, guestSessionKeeper } from "@/lib/identity/guest";
+import { SIGN_IN_RETRY_GAP_MS, ensureGuestSession, guestSessionKeeper } from "@/lib/identity/guest";
 import { takeOverScoring } from "@/lib/identity/takeover";
 import { LocalDb } from "@/lib/local/db";
 import type { StoredEvent } from "@/lib/local/db";
@@ -106,6 +106,7 @@ function stubOnline(online: boolean): void {
 }
 
 afterEach(async () => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   await Promise.all(opened.splice(0).map((db) => db.delete()));
@@ -209,23 +210,77 @@ describe("guestSessionKeeper", () => {
     expect(raw.auth.signInAnonymously).not.toHaveBeenCalled();
   });
 
-  it("tries again on the next check after a sign-in fails", async () => {
-    stubOnline(true);
-    const options: FakeOptions = { signInError: new Error("rate limited") };
-    const { client, raw } = fakeClient(options);
-    const onSettled = vi.fn();
-    const keeper = guestSessionKeeper(client, undefined, onSettled);
+  describe("after a failed sign-in", () => {
+    async function failedOnce(getCaptchaToken?: () => Promise<string>) {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      stubOnline(true);
+      const options: FakeOptions = { signInError: new Error("rate limited") };
+      const { client, raw } = fakeClient(options);
+      const onSettled = vi.fn();
+      const keeper = guestSessionKeeper(client, getCaptchaToken, onSettled);
+      await keeper.isReady();
+      await settle();
+      expect(raw.auth.signInAnonymously).toHaveBeenCalledTimes(1);
+      expect(onSettled).toHaveBeenLastCalledWith(undefined);
+      delete options.signInError;
+      return { keeper, raw, onSettled };
+    }
 
-    await keeper.isReady();
-    await settle();
-    expect(onSettled).toHaveBeenLastCalledWith(undefined);
+    it("waits 60 seconds before the sync loop starts another attempt", async () => {
+      const { keeper, raw, onSettled } = await failedOnce();
+      expect(SIGN_IN_RETRY_GAP_MS).toBe(60_000);
 
-    delete options.signInError;
-    await keeper.isReady();
-    await settle();
+      expect(await keeper.isReady()).toBe(false);
+      vi.advanceTimersByTime(SIGN_IN_RETRY_GAP_MS - 1);
+      expect(await keeper.isReady()).toBe(false);
+      await settle();
+      expect(raw.auth.signInAnonymously).toHaveBeenCalledTimes(1);
 
-    expect(raw.auth.signInAnonymously).toHaveBeenCalledTimes(2);
-    expect(onSettled).toHaveBeenLastCalledWith("created");
+      vi.advanceTimersByTime(1);
+      expect(await keeper.isReady()).toBe(false);
+      await settle();
+
+      expect(raw.auth.signInAnonymously).toHaveBeenCalledTimes(2);
+      expect(onSettled).toHaveBeenLastCalledWith("created");
+    });
+
+    it("lets the online event try again straight away", async () => {
+      const { keeper, raw, onSettled } = await failedOnce();
+
+      expect(await keeper.ensure()).toBe("created");
+
+      expect(raw.auth.signInAnonymously).toHaveBeenCalledTimes(2);
+      expect(onSettled).toHaveBeenLastCalledWith("created");
+    });
+
+    it("counts the gap from the moment the attempt failed and keeps one attempt in flight", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      stubOnline(true);
+      const token = deferred<string>();
+      const { client, raw } = fakeClient({ signInError: new Error("captcha timed out") });
+      const keeper = guestSessionKeeper(client, () => token.promise, vi.fn());
+
+      await keeper.isReady();
+      vi.advanceTimersByTime(40_000);
+      await keeper.isReady();
+      await settle();
+      expect(raw.auth.signInAnonymously).not.toHaveBeenCalled();
+
+      token.resolve("late-token");
+      await settle();
+      expect(raw.auth.signInAnonymously).toHaveBeenCalledTimes(1);
+
+      vi.advanceTimersByTime(SIGN_IN_RETRY_GAP_MS - 1);
+      await keeper.isReady();
+      await settle();
+      expect(raw.auth.signInAnonymously).toHaveBeenCalledTimes(1);
+
+      vi.advanceTimersByTime(1);
+      await keeper.isReady();
+      await keeper.isReady();
+      await settle();
+      expect(raw.auth.signInAnonymously).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("keeps one sign-in waiting for its captcha token and uses the token when it comes", async () => {
@@ -252,8 +307,8 @@ describe("guestSessionKeeper", () => {
     expect(onSettled).toHaveBeenCalledWith("created");
   });
 
-  it("retries a failed first sign-in on the sync loop's backoff until the balls sync", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  it("retries a failed first sign-in from the sync loop once the 60 second gap has passed, until the balls sync", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     try {
       stubOnline(true);
       const db = freshDb();
@@ -280,7 +335,14 @@ describe("guestSessionKeeper", () => {
         expect(pushed).toEqual([]);
 
         delete options.signInError;
-        await vi.advanceTimersByTimeAsync(nextDelay(0));
+        for (const attempt of [0, 1, 2, 3]) {
+          await vi.advanceTimersByTimeAsync(nextDelay(attempt));
+          await vi.waitUntil(() => vi.getTimerCount() === 1);
+        }
+        expect(raw.auth.signInAnonymously).toHaveBeenCalledTimes(1);
+        expect(pushed).toEqual([]);
+
+        await vi.advanceTimersByTimeAsync(nextDelay(4));
         await vi.waitUntil(async () => (await db.matches.get(match.id))?.syncState === "synced");
 
         expect(raw.auth.signInAnonymously).toHaveBeenCalledTimes(2);

@@ -14,16 +14,37 @@ export type PushMatch = {
   summary: MatchSummary;
 };
 
-export type PushError = "network" | "not_signed_in" | "not_owner" | "scoring_moved" | "code_taken" | "unknown";
+export type PushError =
+  | "network"
+  | "not_signed_in"
+  | "not_owner"
+  | "scoring_moved"
+  | "code_taken"
+  | "refused"
+  | "unknown";
 
 export type PushResult = { ok: true; lastSeq: number } | { ok: false; error: PushError };
 
 export type PushFn = (args: { match: PushMatch; device: string; events: MatchEvent[] }) => Promise<PushResult>;
 
 const SERVER_ERRORS: readonly PushError[] = ["not_signed_in", "not_owner", "scoring_moved", "code_taken"];
+const REFUSALS: readonly string[] = ["invalid_event", "too_many_events", "quota_exceeded"];
 
-function serverError(message: string): PushError {
-  return SERVER_ERRORS.find((code) => code === message) ?? "unknown";
+type RpcError = { message: string; code?: string };
+
+function isTransient(status: number): boolean {
+  return status === 0 || status === 408 || status === 429 || status >= 500;
+}
+
+function isConstraintViolation(error: RpcError, status: number): boolean {
+  return status === 409 || error.code?.startsWith("23") === true || /violates .* constraint/i.test(error.message);
+}
+
+function failure(error: RpcError, status: number): PushError {
+  if (isTransient(status)) return "network";
+  if (status === 401) return "not_signed_in";
+  if (REFUSALS.includes(error.message) || isConstraintViolation(error, status)) return "refused";
+  return SERVER_ERRORS.find((code) => code === error.message) ?? "unknown";
 }
 
 export function supabasePush(client: SupabaseClient): PushFn {
@@ -35,7 +56,7 @@ export function supabasePush(client: SupabaseClient): PushFn {
         p_events: events.map(toWire),
       });
       if (error !== null) {
-        return { ok: false, error: status === 0 ? "network" : serverError(error.message) };
+        return { ok: false, error: failure(error, status) };
       }
       return typeof data === "number" ? { ok: true, lastSeq: data } : { ok: false, error: "unknown" };
     } catch {
