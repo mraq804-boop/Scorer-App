@@ -2,7 +2,7 @@
 
 import { ArrowLeftRight, ClipboardList, EllipsisVertical, Flag, LogOut, Pencil, Repeat, Share2, SlidersHorizontal } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { BallListSheet } from "@/components/scoring/ball-list-sheet";
 import { BowlerSheet } from "@/components/scoring/bowler-sheet";
 import { RetireSheet } from "@/components/scoring/retire-sheet";
@@ -113,6 +113,8 @@ function ScorecardSheet({ state, onClose }: { state: MatchState; onClose: () => 
 }
 
 function ShareSheet({ local, state, onClose }: { local: MatchMenuProps["local"]; state: MatchState; onClose: () => void }) {
+  const [flushed] = useState(() => flushSync(getLocalDb(), local.id).then(() => undefined));
+  const beforeShare = useCallback(() => flushed, [flushed]);
   return (
     <Drawer open onOpenChange={(open) => !open && onClose()}>
       <DrawerContent aria-describedby={undefined} className="mx-auto max-w-md">
@@ -120,13 +122,7 @@ function ShareSheet({ local, state, onClose }: { local: MatchMenuProps["local"];
           <DrawerTitle className="text-xl font-bold">{t("share.sheetTitle")}</DrawerTitle>
         </DrawerHeader>
         <div className="px-4 pb-safe">
-          <ShareButtons
-            code={local.code}
-            state={state}
-            beforeShare={async () => {
-              await flushSync(getLocalDb(), local.id);
-            }}
-          />
+          <ShareButtons code={local.code} state={state} beforeShare={beforeShare} eager />
         </div>
       </DrawerContent>
     </Drawer>

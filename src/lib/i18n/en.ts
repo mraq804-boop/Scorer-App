@@ -224,5 +224,9 @@ export const en = {
   "share.image": "Share scorecard image",
   "share.imageFailed": "Couldn't make the scorecard image. Check your connection and try again.",
   "share.imageAlt": "Cricket match score",
+  "share.whatsappBlocked": "WhatsApp didn't open. Tap to try again.",
+  "share.openWhatsapp": "Open WhatsApp",
+  "share.imageBlocked": "Your phone didn't open the share sheet.",
+  "share.saveImage": "Save image",
   "share.waitForSync": "Sharing opens once this match has synced. Connect to the internet and give it a moment.",
 } as const;
