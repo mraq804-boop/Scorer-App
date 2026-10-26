@@ -9,7 +9,7 @@ import { appendEvents, createLocalMatch, getDeviceId, loadEvents } from "@/lib/l
 import type { MatchSetup } from "@/lib/local/matches";
 import { supabasePush } from "@/lib/sync/push";
 import type { PushFn, PushResult } from "@/lib/sync/push";
-import { nextDelay, requestSync, startSyncLoop, syncAll, syncMatch } from "@/lib/sync/sync";
+import { REFUSED_DELAY_MS, nextDelay, requestSync, startSyncLoop, syncAll, syncMatch } from "@/lib/sync/sync";
 import { fromWire, toWire } from "@/lib/sync/wire";
 import { TestMatch } from "../../helpers/match";
 
@@ -19,6 +19,7 @@ const opened: LocalDb[] = [];
 const stops: Array<() => void> = [];
 
 const NETWORK: PushResult = { ok: false, error: "network" };
+const REFUSED: PushResult = { ok: false, error: "unknown" };
 
 function freshDb(): LocalDb {
   const db = new LocalDb(`test-${crypto.randomUUID()}`);
@@ -566,6 +567,53 @@ describe("syncAll", () => {
     expect(await syncAll(freshDb(), fake.push, {})).toBe("synced");
     expect(fake.calls).toHaveLength(0);
   });
+
+  it("holds back a match the server refused for 15 minutes and keeps its balls", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const db = freshDb();
+    const match = await createLocalMatch(db, setup());
+    const fake = server([REFUSED]);
+
+    expect(await syncAll(db, fake.push, {})).toBe("pending");
+    expect(await syncAll(db, fake.push, {})).toBe("pending");
+    vi.advanceTimersByTime(REFUSED_DELAY_MS - 1);
+    expect(await syncAll(db, fake.push, {})).toBe("pending");
+    expect(fake.calls).toHaveLength(1);
+    expect(await db.matches.get(match.id)).toMatchObject({ syncedSeq: 0, syncState: "pending", blockedReason: null });
+    expect(await loadEvents(db, match.id)).toHaveLength(5);
+
+    vi.advanceTimersByTime(1);
+    expect(await syncAll(db, fake.push, {})).toBe("synced");
+    expect(fake.seqs()).toEqual([[1, 2, 3, 4, 5], [1, 2, 3, 4, 5]]);
+    expect(REFUSED_DELAY_MS).toBe(15 * 60_000);
+  });
+
+  it("keeps syncing the other matches while one is held back", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const db = freshDb();
+    const refused = await createLocalMatch(db, setup());
+    await db.matches.update(refused.id, { updatedAt: "2099-01-01T00:00:00.000Z" });
+    const other = await createLocalMatch(db, setup());
+    const fake = server([REFUSED]);
+
+    expect(await syncAll(db, fake.push, {})).toBe("pending");
+    await addBalls(db, other.id, 1);
+    expect(await syncAll(db, fake.push, {})).toBe("pending");
+
+    expect(fake.calls.map((call) => call.match.id)).toEqual([refused.id, other.id, other.id]);
+    expect(await db.matches.get(other.id)).toMatchObject({ syncedSeq: 6, syncState: "synced" });
+  });
+
+  it.each([NETWORK, { ok: false, error: "not_signed_in" } as const])("retries at once after %o", async (failure) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const db = freshDb();
+    await createLocalMatch(db, setup());
+    const fake = server([failure]);
+
+    expect(await syncAll(db, fake.push, {})).toBe("pending");
+    expect(await syncAll(db, fake.push, {})).toBe("synced");
+    expect(fake.calls).toHaveLength(2);
+  });
 });
 
 describe("nextDelay", () => {
@@ -783,6 +831,28 @@ describe("startSyncLoop", () => {
     await until(() => failingClaim.mock.calls.length === 2);
 
     expect(fake.calls).toHaveLength(0);
+  });
+
+  it("does not re-send a refused match on every backoff, only after 15 minutes", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const db = freshDb();
+    const match = await createLocalMatch(db, setup());
+    const fake = server([REFUSED]);
+    const refusedAt = Date.now();
+    startLoop({ db, push: fake.push, claim, isReady: ready });
+    await until(() => fake.calls.length === 1 && vi.getTimerCount() === 1);
+
+    let passes = 0;
+    while (fake.calls.length === 1 && Date.now() - refusedAt < 2 * REFUSED_DELAY_MS) {
+      await vi.advanceTimersByTimeAsync(nextDelay(10));
+      await settle();
+      passes += 1;
+    }
+
+    expect(Date.now() - refusedAt).toBeGreaterThanOrEqual(REFUSED_DELAY_MS);
+    expect(passes).toBeGreaterThan(10);
+    await until(async () => (await db.matches.get(match.id))?.syncState === "synced");
+    expect(fake.calls).toHaveLength(2);
   });
 
   it("keeps going after a pass throws", async () => {

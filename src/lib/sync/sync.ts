@@ -22,9 +22,11 @@ const BATCH_SIZE = 200;
 const MAX_RESEND_ROUNDS = 3;
 const BASE_DELAY_MS = 2000;
 const MAX_DELAY_MS = 60000;
+export const REFUSED_DELAY_MS = 15 * 60_000;
 export const PENDING_CLAIM_KEY = "pendingClaim";
 
 let activeLoop: Loop | undefined;
+const refusedUntil = new Map<string, number>();
 
 export function nextDelay(attempt: number): number {
   return Math.min(MAX_DELAY_MS, BASE_DELAY_MS * 2 ** attempt);
@@ -32,6 +34,10 @@ export function nextDelay(attempt: number): number {
 
 function isUnsynced(match: LocalMatch): boolean {
   return match.syncState !== "blocked" && match.syncedSeq < match.lastSeq;
+}
+
+function isHeldBack(matchId: string): boolean {
+  return Date.now() < (refusedUntil.get(matchId) ?? 0);
 }
 
 async function claimSettled(db: LocalDb, claim: SyncOptions["claim"]): Promise<boolean> {
@@ -120,9 +126,11 @@ async function pushPending(db: LocalDb, matchId: string, push: PushFn): Promise<
         await db.matches.update(matchId, { code: newMatchCode() });
         continue;
       }
+      if (result.error === "unknown") refusedUntil.set(matchId, Date.now() + REFUSED_DELAY_MS);
       return "pending";
     }
 
+    refusedUntil.delete(matchId);
     await recordProgress(db, matchId, Math.min(result.lastSeq, match.lastSeq));
     if (result.lastSeq < target) {
       resendRounds += 1;
@@ -151,7 +159,7 @@ export async function syncAll(
   let outcome: Exclude<SyncOutcome, "blocked"> = "synced";
   for (const match of matches) {
     if (!isUnsynced(match)) continue;
-    if ((await pushPending(db, match.id, push)) === "pending") outcome = "pending";
+    if (isHeldBack(match.id) || (await pushPending(db, match.id, push)) === "pending") outcome = "pending";
   }
   return outcome;
 }
