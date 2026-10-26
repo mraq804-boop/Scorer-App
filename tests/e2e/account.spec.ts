@@ -39,3 +39,22 @@ test("the sign-in button sends the guest to Google and back to the account page"
   expect(url.searchParams.get("provider")).toBe("google");
   expect(url.searchParams.get("redirect_to")).toBe(`${baseURL}/auth/callback?next=/account`);
 });
+
+test("a page restored from the back-forward cache is reloaded, a normal show is not", async ({ page }) => {
+  await page.goto("/account");
+  await expect(page.getByRole("button", { name: "Sign in with Google" })).toBeVisible();
+  const survives = () => page.evaluate(() => "restoreMarker" in window);
+  const show = (persisted: boolean) =>
+    page.evaluate((persisted) => {
+      setTimeout(() => window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted })));
+    }, persisted);
+  await page.evaluate(() => Object.assign(window, { restoreMarker: true }));
+
+  await show(false);
+  await page.waitForTimeout(500);
+  expect(await survives()).toBe(true);
+
+  await Promise.all([page.waitForEvent("load"), show(true)]);
+  expect(await survives()).toBe(false);
+  await expect(page.getByRole("button", { name: "Sign in with Google" })).toBeVisible();
+});

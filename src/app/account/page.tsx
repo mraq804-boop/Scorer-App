@@ -39,6 +39,16 @@ function useView(): View {
   return view;
 }
 
+function useReloadOnRestore(): void {
+  useEffect(() => {
+    const onShow = (event: PageTransitionEvent) => {
+      if (event.persisted) window.location.reload();
+    };
+    window.addEventListener("pageshow", onShow);
+    return () => window.removeEventListener("pageshow", onShow);
+  }, []);
+}
+
 function SignInPrompt({ client }: { client: SupabaseClient }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -76,6 +86,7 @@ function SignInPrompt({ client }: { client: SupabaseClient }) {
 
 function AccountContent() {
   const view = useView();
+  useReloadOnRestore();
   const authFailed = useSearchParams().get("error") === "auth";
   return (
     <>
