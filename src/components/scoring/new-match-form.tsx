@@ -115,7 +115,7 @@ function SetupForm({ players }: { players: string[] }) {
     setSaving(true);
     setSaveFailed(false);
     try {
-      await requestPersist();
+      void requestPersist();
       const match = await createLocalMatch(getLocalDb(), result.setup);
       location.assign(`/score?m=${match.id}`);
     } catch {

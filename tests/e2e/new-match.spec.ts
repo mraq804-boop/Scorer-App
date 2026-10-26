@@ -74,6 +74,17 @@ test("long and Urdu names don't overflow", async ({ page }) => {
   expect(await fitsViewport(page)).toBe(true);
 });
 
+test("Start does not wait for an unanswered storage persistence prompt", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(StorageManager.prototype, "persist", { value: () => new Promise<boolean>(() => undefined) });
+  });
+  await page.goto("/new");
+  await fillNames(page, names);
+  await start(page).click();
+
+  await expect(page).toHaveURL(/\/score\?m=/, { timeout: 5_000 });
+});
+
 test("storage error is shown", async ({ page }) => {
   await page.addInitScript(() => {
     delete (window as { indexedDB?: unknown }).indexedDB;
