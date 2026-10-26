@@ -17,6 +17,17 @@ async function viewerPage(browser: Browser, baseURL: string | undefined): Promis
   return context.newPage();
 }
 
+function joinedMatchChannel(page: Page): Promise<void> {
+  return new Promise((resolve) => {
+    page.on("websocket", (socket) => {
+      socket.on("framereceived", ({ payload }) => {
+        if (typeof payload !== "string") return;
+        if (payload.includes("realtime:match:") && payload.includes("phx_reply") && payload.includes('"status":"ok"')) resolve();
+      });
+    });
+  });
+}
+
 async function scoreTwoBalls(page: Page): Promise<string> {
   const matchId = await startMatch(page);
   await runs(page, 1, 1);
@@ -40,8 +51,10 @@ test.describe("with a backend", () => {
 
     const viewer = await viewerPage(browser, baseURL);
     await viewer.route("**/api/m/*/events*", (route) => route.abort());
+    const joined = joinedMatchChannel(viewer);
     await viewer.goto(`/m/${code}`);
     await expect(score(viewer)).toContainText("2/0");
+    await joined;
 
     await runs(page, 4);
     await expect(score(viewer)).toContainText("6/0", { timeout: REALTIME_WAIT_MS });
