@@ -1,8 +1,9 @@
 "use client";
 
-import { ArrowLeftRight, ClipboardList, EllipsisVertical, Flag, LogOut, Repeat, SlidersHorizontal } from "lucide-react";
+import { ArrowLeftRight, ClipboardList, EllipsisVertical, Flag, LogOut, Pencil, Repeat, SlidersHorizontal } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
+import { BallListSheet } from "@/components/scoring/ball-list-sheet";
 import { BowlerSheet } from "@/components/scoring/bowler-sheet";
 import { RetireSheet } from "@/components/scoring/retire-sheet";
 import { SettingsSheet } from "@/components/scoring/settings-sheet";
@@ -20,7 +21,7 @@ import { t } from "@/lib/i18n";
 import { currentInnings } from "@/lib/scoring";
 import type { EventDraft, InningsState, MatchState } from "@/lib/scoring";
 
-type Panel = "menu" | "bowler" | "retire" | "settings" | "end" | "scorecard";
+type Panel = "menu" | "bowler" | "retire" | "balls" | "settings" | "end" | "scorecard";
 type OnRecord = (drafts: EventDraft[]) => Promise<boolean>;
 
 type MatchMenuProps = {
@@ -29,6 +30,7 @@ type MatchMenuProps = {
   busy: boolean;
   recent: readonly string[];
   onRecord: OnRecord;
+  onEditBall: (eventId: string) => void;
 };
 
 type MenuItemProps = {
@@ -105,10 +107,11 @@ function ScorecardSheet({ state, onClose }: { state: MatchState; onClose: () => 
   );
 }
 
-export function MatchMenu({ state, blocked, busy, recent, onRecord }: MatchMenuProps) {
+export function MatchMenu({ state, blocked, busy, recent, onRecord, onEditBall }: MatchMenuProps) {
   const [panel, setPanel] = useState<Panel | null>(null);
   const live = currentInnings(state);
   const locked = blocked || busy || live === null;
+  const bowled = state.innings.some((innings) => innings.overs.length > 0);
   const close = () => setPanel(null);
 
   const recordAndClose: OnRecord = async (drafts) => {
@@ -143,6 +146,12 @@ export function MatchMenu({ state, blocked, busy, recent, onRecord }: MatchMenuP
               />
               <MenuItem icon={Repeat} label={t("menu.changeBowler")} disabled={locked} onClick={() => setPanel("bowler")} />
               <MenuItem icon={LogOut} label={t("menu.retire")} disabled={locked} onClick={() => setPanel("retire")} />
+              <MenuItem
+                icon={Pencil}
+                label={t("menu.editBall")}
+                disabled={blocked || busy || !bowled}
+                onClick={() => setPanel("balls")}
+              />
               <MenuItem icon={SlidersHorizontal} label={t("menu.settings")} disabled={locked} onClick={() => setPanel("settings")} />
               <MenuItem icon={Flag} label={t("score.endInnings")} disabled={locked} onClick={() => setPanel("end")} />
               <MenuItem icon={ClipboardList} label={t("scorecard.title")} onClick={() => setPanel("scorecard")} />
@@ -163,6 +172,16 @@ export function MatchMenu({ state, blocked, busy, recent, onRecord }: MatchMenuP
       )}
       {panel === "retire" && live !== null && (
         <RetireSheet state={state} innings={live} busy={busy} onClose={close} onRecord={onRecord} />
+      )}
+      {panel === "balls" && !blocked && (
+        <BallListSheet
+          state={state}
+          onClose={close}
+          onSelect={(eventId) => {
+            close();
+            onEditBall(eventId);
+          }}
+        />
       )}
       {panel === "settings" && live !== null && (
         <SettingsSheet state={state} innings={live} busy={busy} onClose={close} onRecord={onRecord} />

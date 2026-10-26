@@ -133,6 +133,51 @@ test("edit a wicket ball only offers dismissals that fit the ball", async ({ pag
   await expect(card.getByText("c Zain b Hamza")).toHaveCount(0);
 });
 
+test("edit a ball from an earlier over", async ({ page }) => {
+  await startMatch(page);
+  await runs(page, 1, 0, 0, 0, 0, 0);
+  const next = page.getByRole("dialog", { name: "Next bowler" });
+  await next.getByLabel("Bowler's name").fill("Kamran");
+  await next.getByRole("button", { name: "Bowl", exact: true }).click();
+  await runs(page, 0, 0);
+  await expect(score(page)).toHaveText("1/0 (1.2)");
+
+  await openMenu(page, "Edit a ball");
+  const list = page.getByRole("dialog", { name: "Edit a ball" });
+  await list.getByRole("region", { name: "Lions" }).getByRole("button", { name: "Edit ball 0.1 (1)" }).click();
+  const sheet = page.getByRole("dialog", { name: "Edit ball 0.1" });
+  await sheet.getByRole("radio", { name: "3", exact: true }).check();
+  await sheet.getByRole("button", { name: "Save" }).click();
+
+  await expect(sheet).toBeHidden();
+  await expect(score(page)).toHaveText("3/0 (1.2)");
+  await expect(page.getByTestId("this-over").getByRole("button")).toHaveText(["0", "0"]);
+  await openMenu(page, "Edit a ball");
+  await expect(list.getByRole("region", { name: "Lions" }).getByRole("button", { name: "Edit ball 0.1 (3)" })).toBeVisible();
+});
+
+test("edit a first-innings ball during the chase", async ({ page }) => {
+  await startMatch(page, { overs: 1 });
+  await runs(page, 1, 0, 0, 0, 0, 0);
+  const start = page.getByRole("dialog", { name: "Start innings 2" });
+  await start.getByLabel("Striker", { exact: true }).fill("Zain");
+  await start.getByLabel("Non-striker", { exact: true }).fill("Faisal");
+  await start.getByLabel("Opening bowler", { exact: true }).fill("Usman");
+  await start.getByRole("button", { name: "Start innings" }).click();
+  await expect(page.getByText("Need 2 from 6 balls")).toBeVisible();
+
+  await openMenu(page, "Edit a ball");
+  const list = page.getByRole("dialog", { name: "Edit a ball" });
+  await list.getByRole("region", { name: "Lions" }).getByRole("button", { name: "Edit ball 0.1 (1)" }).click();
+  const sheet = page.getByRole("dialog", { name: "Edit ball 0.1" });
+  await sheet.getByRole("radio", { name: "3", exact: true }).check();
+  await sheet.getByRole("button", { name: "Save" }).click();
+
+  await expect(sheet).toBeHidden();
+  await expect(page.getByText("Need 4 from 6 balls")).toBeVisible();
+  await expect(score(page)).toHaveText("0/0 (0)");
+});
+
 test("cut overs mid-innings", async ({ page }) => {
   await startMatch(page);
   await openMenu(page, "Match settings");
@@ -285,7 +330,7 @@ test("a blocked match keeps the scorecard but not the edits", async ({ page }) =
   await expect(page.getByTestId("this-over").getByRole("button")).toHaveCount(0);
   await page.getByRole("button", { name: "Match menu" }).click();
   const menu = page.getByRole("dialog", { name: "Match menu" });
-  for (const item of ["Swap strike", "Change bowler", "Retire batter", "Match settings", "End innings"]) {
+  for (const item of ["Swap strike", "Change bowler", "Retire batter", "Edit a ball", "Match settings", "End innings"]) {
     await expect(menu.getByRole("button", { name: item, exact: true })).toBeDisabled();
   }
   await menu.getByRole("button", { name: "Scorecard", exact: true }).click();

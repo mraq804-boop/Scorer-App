@@ -146,7 +146,16 @@ function MatchScreen({ matchId }: { matchId: string }) {
         local={local}
         state={state}
         innings={innings}
-        actions={<MatchMenu state={state} blocked={blocked} busy={busy} recent={recent} onRecord={record} />}
+        actions={
+          <MatchMenu
+            state={state}
+            blocked={blocked}
+            busy={busy}
+            recent={recent}
+            onRecord={record}
+            onEditBall={setEditingId}
+          />
+        }
       />
       {blocked && (
         <p role="alert" className="rounded-2xl bg-danger-soft p-3 text-sm font-semibold text-destructive">

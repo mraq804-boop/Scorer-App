@@ -153,6 +153,7 @@ export const en = {
   "menu.swapStrike": "Swap strike",
   "menu.changeBowler": "Change bowler",
   "menu.retire": "Retire batter",
+  "menu.editBall": "Edit a ball",
   "menu.settings": "Match settings",
   "retire.reason": "Reason",
   "endInnings.title": "End this innings now?",
