@@ -1,10 +1,13 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { RealtimeClient } from "@supabase/realtime-js";
 import type { MatchEvent } from "@/lib/scoring";
 import { contiguousPrefix, mergeEvents } from "./merge";
 
 export const SUBSCRIBE_TIMEOUT_MS = 5000;
+export const PAGE_LIMIT = 1000;
 
-type FeedClient = Pick<SupabaseClient, "channel" | "removeChannel">;
+const REQUEST_TIMEOUT_POLLS = 2;
+
+type FeedClient = Pick<RealtimeClient, "channel" | "removeChannel" | "disconnect">;
 
 export type LiveFeedOptions = {
   createClient: () => FeedClient;
@@ -24,21 +27,34 @@ function isMatchEvent(value: unknown): value is MatchEvent {
 
 async function fetchEventsAfter(code: string, after: number, signal: AbortSignal): Promise<MatchEvent[]> {
   const response = await fetch(`/api/m/${encodeURIComponent(code)}/events?after=${after}`, { cache: "no-cache", signal });
-  if (!response.ok) return [];
+  if (!response.ok) throw new Error(`events request failed with ${response.status}`);
   const body: unknown = await response.json();
   const events = typeof body === "object" && body !== null ? (body as { events?: unknown }).events : undefined;
-  return Array.isArray(events) ? events.filter(isMatchEvent) : [];
+  if (!Array.isArray(events)) throw new Error("events response has no list of events");
+  return events.filter(isMatchEvent);
 }
 
 export function startLiveFeed({ createClient, matchId, code, initial, pollMs, isVisible, onChange }: LiveFeedOptions): () => void {
-  const abort = new AbortController();
   let events = mergeEvents([], initial).events;
   let settledSeq = contiguousPrefix(events).length;
   let pollTimer: ReturnType<typeof setInterval> | undefined;
+  let inFlight: AbortController | undefined;
   let teardown: (() => void) | undefined;
   let fetching = false;
   let fetchAgain = false;
+  let fallback = false;
+  let fetchFailed = false;
   let stopped = false;
+
+  function syncPolling(): void {
+    if (stopped) return;
+    if (fallback || fetchFailed || events.length !== settledSeq) {
+      pollTimer ??= setInterval(poll, pollMs);
+    } else {
+      clearInterval(pollTimer);
+      pollTimer = undefined;
+    }
+  }
 
   function ingest(incoming: readonly MatchEvent[]): boolean {
     const merged = mergeEvents(events, incoming);
@@ -48,6 +64,7 @@ export function startLiveFeed({ createClient, matchId, code, initial, pollMs, is
       settledSeq = settled.length;
       onChange(settled);
     }
+    syncPolling();
     return merged.gap;
   }
 
@@ -58,11 +75,20 @@ export function startLiveFeed({ createClient, matchId, code, initial, pollMs, is
       return;
     }
     fetching = true;
-    const fetched = await fetchEventsAfter(code, settledSeq, abort.signal).catch(() => []);
+    const request = new AbortController();
+    inFlight = request;
+    const timeout = setTimeout(() => request.abort(), REQUEST_TIMEOUT_POLLS * pollMs);
+    const before = settledSeq;
+    const fetched = await fetchEventsAfter(code, settledSeq, request.signal).catch(() => null);
+    clearTimeout(timeout);
+    inFlight = undefined;
     fetching = false;
     if (stopped) return;
-    ingest(fetched);
-    if (fetchAgain) {
+    fetchFailed = fetched === null;
+    if (fetched === null) syncPolling();
+    else ingest(fetched);
+    const pageFull = fetched !== null && fetched.length >= PAGE_LIMIT && settledSeq > before;
+    if (fetchAgain || pageFull) {
       fetchAgain = false;
       await catchUp();
     }
@@ -72,26 +98,23 @@ export function startLiveFeed({ createClient, matchId, code, initial, pollMs, is
     if (isVisible() && !fetching) void catchUp();
   }
 
-  function startPolling(): void {
-    if (stopped || pollTimer !== undefined) return;
+  function enterFallback(): void {
+    if (stopped || fallback) return;
+    fallback = true;
+    syncPolling();
     poll();
-    pollTimer = setInterval(poll, pollMs);
-  }
-
-  function stopPolling(): void {
-    clearInterval(pollTimer);
-    pollTimer = undefined;
   }
 
   function onStatus(status: string): void {
     if (stopped) return;
-    if (status === "SUBSCRIBED") {
-      clearTimeout(subscribeTimer);
-      stopPolling();
-      void catchUp();
+    if (status !== "SUBSCRIBED") {
+      enterFallback();
       return;
     }
-    startPolling();
+    clearTimeout(subscribeTimer);
+    fallback = false;
+    syncPolling();
+    void catchUp();
   }
 
   function onBroadcast(message: { payload?: unknown }): void {
@@ -99,23 +122,29 @@ export function startLiveFeed({ createClient, matchId, code, initial, pollMs, is
     if (ingest([message.payload])) void catchUp();
   }
 
-  const subscribeTimer = setTimeout(startPolling, SUBSCRIBE_TIMEOUT_MS);
+  const subscribeTimer = setTimeout(enterFallback, SUBSCRIBE_TIMEOUT_MS);
   try {
     const client = createClient();
     const channel = client
       .channel(`match:${matchId}`, { config: { private: true } })
       .on("broadcast", { event: "event" }, onBroadcast)
       .subscribe(onStatus);
-    teardown = () => void client.removeChannel(channel);
+    teardown = () => {
+      void client
+        .removeChannel(channel)
+        .catch(() => undefined)
+        .then(() => client.disconnect());
+    };
   } catch {
-    startPolling();
+    enterFallback();
   }
 
   return () => {
     stopped = true;
-    abort.abort();
+    inFlight?.abort();
     clearTimeout(subscribeTimer);
-    stopPolling();
+    clearInterval(pollTimer);
+    pollTimer = undefined;
     teardown?.();
   };
 }

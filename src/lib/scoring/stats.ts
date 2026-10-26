@@ -1,4 +1,4 @@
-import type { BallChip, CommentaryItem, DeliveryEvent, InningsState } from "./types";
+import type { BallChip, CommentaryItem, DeliveryEvent, InningsState, MatchState, Player } from "./types";
 
 export function formatOvers(legalBalls: number, ballsPerOver: number): string {
   const overs = Math.floor(legalBalls / ballsPerOver);
@@ -28,6 +28,17 @@ export function runRate(runs: number, legalBalls: number, ballsPerOver: number):
 
 export function requiredRunRate(needed: number, ballsLeft: number, ballsPerOver: number): number | null {
   return ballsLeft <= 0 ? null : round2((needed * ballsPerOver) / ballsLeft);
+}
+
+export function chaseNeed(state: MatchState, innings: InningsState): { needed: number; ballsLeft: number } | null {
+  if (innings.number !== 2 || innings.ended !== null || state.target === null) return null;
+  const needed = state.target - innings.runs;
+  const ballsLeft = state.rules.oversPerInnings * state.rules.ballsPerOver - innings.legalBalls;
+  return needed > 0 && ballsLeft > 0 ? { needed, ballsLeft } : null;
+}
+
+export function playerName(players: Record<string, Player>, id: string): string {
+  return players[id]?.name ?? id;
 }
 
 export function dotBallPct(innings: InningsState): number {

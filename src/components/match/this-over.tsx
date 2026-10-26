@@ -1,4 +1,4 @@
-import { BallChips, commentaryById } from "@/components/scoring/ball-chips";
+import { BallChips, commentaryById } from "@/components/match/ball-chips";
 import { t } from "@/lib/i18n";
 import type { InningsState } from "@/lib/scoring";
 

@@ -6,6 +6,7 @@ import type { MatchEvent } from "@/lib/scoring";
 const MATCH_ID = "0b1c2d3e-0000-4000-8000-000000000001";
 const CODE = "abcd2345";
 const POLL_MS = 5000;
+const PAGE_LIMIT = 1000;
 
 type Message = { payload?: unknown };
 
@@ -38,7 +39,11 @@ function fakeRealtime() {
       return channel;
     }),
   };
-  const client = { channel: vi.fn(() => channel), removeChannel: vi.fn(async () => "ok") };
+  const client = {
+    channel: vi.fn(() => channel),
+    removeChannel: vi.fn(async () => "ok"),
+    disconnect: vi.fn(async () => ({ error: null })),
+  };
   return {
     channel,
     client,
@@ -50,14 +55,20 @@ function fakeRealtime() {
 
 function fakeServer(events: MatchEvent[]) {
   const urls: string[] = [];
-  const fetchMock = vi.fn(async (input: string | URL | Request) => {
+  const inits: Array<RequestInit | undefined> = [];
+  const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     urls.push(url);
+    inits.push(init);
     const after = Number(new URL(url, "http://localhost").searchParams.get("after"));
-    return Response.json({ events: events.filter((e) => e.seq > after) });
+    return Response.json({ events: events.filter((e) => e.seq > after).slice(0, PAGE_LIMIT) });
   });
   vi.stubGlobal("fetch", fetchMock);
-  return { events, urls, fetchMock };
+  return { events, urls, inits, fetchMock };
+}
+
+function requested(server: ReturnType<typeof fakeServer>): string[] {
+  return server.fetchMock.mock.calls.map(([input]) => String(input));
 }
 
 function start(initial: MatchEvent[], realtime = fakeRealtime(), page = { visible: true }) {
@@ -185,6 +196,98 @@ describe("startLiveFeed realtime", () => {
   });
 });
 
+describe("startLiveFeed recovery while subscribed", () => {
+  async function subscribed(initial: MatchEvent[], serverEvents: MatchEvent[]) {
+    const server = fakeServer(serverEvents);
+    const feed = start(initial);
+    feed.realtime.status("SUBSCRIBED");
+    await flush();
+    server.fetchMock.mockClear();
+    return { server, ...feed };
+  }
+
+  it("retries a failed catch-up on the poll interval until it works, then stops polling", async () => {
+    const server = fakeServer(upTo(3));
+    server.fetchMock.mockRejectedValueOnce(new TypeError("network"));
+    const { realtime, onChange } = start(upTo(2));
+
+    realtime.status("SUBSCRIBED");
+    await flush();
+    expect(server.fetchMock).toHaveBeenCalledTimes(1);
+    expect(onChange).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(POLL_MS);
+    expect(requested(server)).toEqual([eventsUrl(2), eventsUrl(2)]);
+    expect(lastPublished(onChange)).toEqual([1, 2, 3]);
+
+    await vi.advanceTimersByTimeAsync(POLL_MS * 4);
+    expect(server.fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a failed gap fill", async () => {
+    const { server, realtime, onChange } = await subscribed(upTo(1), upTo(1));
+    server.events.push(event(2), event(3), event(4));
+    server.fetchMock.mockRejectedValueOnce(new TypeError("network"));
+
+    realtime.deliver(event(4));
+    await flush();
+    expect(requested(server)).toEqual([eventsUrl(1)]);
+    expect(onChange).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(POLL_MS);
+    expect(requested(server)).toEqual([eventsUrl(1), eventsUrl(1)]);
+    expect(lastPublished(onChange)).toEqual([1, 2, 3, 4]);
+
+    await vi.advanceTimersByTimeAsync(POLL_MS * 4);
+    expect(server.fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps retrying while the gap is still open, for example behind a stale cached copy", async () => {
+    const { server, realtime, onChange } = await subscribed(upTo(1), upTo(1));
+    server.events.push(event(2));
+
+    realtime.deliver(event(4));
+    await flush();
+    expect(requested(server)).toEqual([eventsUrl(1)]);
+    expect(lastPublished(onChange)).toEqual([1, 2]);
+
+    await vi.advanceTimersByTimeAsync(POLL_MS);
+    expect(requested(server)).toEqual([eventsUrl(1), eventsUrl(2)]);
+
+    server.events.push(event(3), event(4));
+    await vi.advanceTimersByTimeAsync(POLL_MS);
+    expect(requested(server)).toEqual([eventsUrl(1), eventsUrl(2), eventsUrl(2)]);
+    expect(lastPublished(onChange)).toEqual([1, 2, 3, 4]);
+
+    await vi.advanceTimersByTimeAsync(POLL_MS * 4);
+    expect(server.fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("pages past the 1000 event cap without waiting for the next poll", async () => {
+    const server = fakeServer(upTo(2500));
+    const { realtime, onChange } = start(upTo(1));
+
+    realtime.status("SUBSCRIBED");
+    for (let i = 0; i < 5; i++) await flush();
+
+    expect(requested(server)).toEqual([eventsUrl(1), eventsUrl(1001), eventsUrl(2001)]);
+    expect(lastPublished(onChange)).toHaveLength(2500);
+
+    await vi.advanceTimersByTimeAsync(POLL_MS * 4);
+    expect(server.fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("stops paging when a full page does not move the feed forward", async () => {
+    const server = fakeServer(upTo(1).concat(Array.from({ length: PAGE_LIMIT }, (_, i) => event(i + 5))));
+    const { realtime } = start(upTo(1));
+
+    realtime.status("SUBSCRIBED");
+    for (let i = 0; i < 5; i++) await flush();
+
+    expect(server.fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("startLiveFeed polling fallback", () => {
   it("polls from the last contiguous seq every interval when the channel has not subscribed in 5 s", async () => {
     const server = fakeServer(upTo(2));
@@ -196,6 +299,7 @@ describe("startLiveFeed polling fallback", () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(server.urls).toEqual([eventsUrl(2)]);
     expect(server.fetchMock).toHaveBeenCalledWith(eventsUrl(2), expect.objectContaining({ cache: "no-cache" }));
+    expect(server.inits.every((init) => init?.signal instanceof AbortSignal)).toBe(true);
 
     server.events.push(event(3));
     await vi.advanceTimersByTimeAsync(POLL_MS);
@@ -269,16 +373,18 @@ describe("startLiveFeed polling fallback", () => {
     expect(lastPublished(onChange)).toEqual([1, 2, 3]);
   });
 
-  it("treats a non-OK response as no new events", async () => {
-    const fetchMock = vi.fn(async () => new Response(null, { status: 404 }));
-    vi.stubGlobal("fetch", fetchMock);
+  it("treats a non-OK response as a failure and tries again on the next poll", async () => {
+    const server = fakeServer(upTo(3));
+    server.fetchMock.mockResolvedValueOnce(new Response(null, { status: 500 }));
     const { realtime, onChange } = start(upTo(2));
 
     realtime.status("CLOSED");
     await flush();
-
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(server.fetchMock).toHaveBeenCalledTimes(1);
     expect(onChange).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(POLL_MS);
+    expect(lastPublished(onChange)).toEqual([1, 2, 3]);
   });
 
   it("stops polling once the channel subscribes late", async () => {
@@ -296,8 +402,37 @@ describe("startLiveFeed polling fallback", () => {
   });
 });
 
+describe("startLiveFeed hung requests", () => {
+  it("aborts a request that takes longer than twice the poll interval and polls again", async () => {
+    const signals: AbortSignal[] = [];
+    const fetchMock = vi.fn((_input: string | URL | Request, init?: RequestInit) => {
+      const signal = init?.signal as AbortSignal;
+      signals.push(signal);
+      if (signals.length > 1) return Promise.resolve(Response.json({ events: [event(3)] }));
+      return new Promise<Response>((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { realtime, onChange } = start(upTo(2));
+
+    realtime.status("CLOSED");
+    await flush();
+    await vi.advanceTimersByTimeAsync(POLL_MS * 2 - 1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(signals[0].aborted).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(signals[0].aborted).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(POLL_MS);
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(1);
+    expect(lastPublished(onChange)).toEqual([1, 2, 3]);
+  });
+});
+
 describe("startLiveFeed stop", () => {
-  it("removes the channel and ignores later events, timers and statuses", async () => {
+  it("removes the channel, closes the socket and ignores later events, timers and statuses", async () => {
     const server = fakeServer(upTo(3));
     const { realtime, onChange, stop } = start(upTo(2));
 
@@ -307,6 +442,7 @@ describe("startLiveFeed stop", () => {
     await vi.advanceTimersByTimeAsync(SUBSCRIBE_TIMEOUT_MS + POLL_MS * 3);
 
     expect(realtime.client.removeChannel).toHaveBeenCalledWith(realtime.channel);
+    expect(realtime.client.disconnect).toHaveBeenCalledTimes(1);
     expect(server.urls).toEqual([]);
     expect(onChange).not.toHaveBeenCalled();
   });

@@ -9,10 +9,12 @@ export type { AvailableDismissal } from "./dismissals";
 export { nextPrompt } from "./prompts";
 export {
   boundaryPct,
+  chaseNeed,
   chipLabel,
   dotBallPct,
   economy,
   formatOvers,
+  playerName,
   requiredRunRate,
   runRate,
   strikeRate,

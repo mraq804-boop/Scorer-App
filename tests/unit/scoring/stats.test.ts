@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   boundaryPct,
+  chaseNeed,
   chipLabel,
   dotBallPct,
   economy,
+  playerName,
   requiredRunRate,
   runRate,
   strikeRate,
@@ -231,5 +233,44 @@ describe("dotBallPct and boundaryPct", () => {
     m.ball({ kind: "wide", runs: 0 });
     expect(dotBallPct(m.inn)).toBe(0);
     expect(boundaryPct(m.inn)).toBe(0);
+  });
+});
+
+describe("chaseNeed", () => {
+  function chase(): TestMatch {
+    const m = new TestMatch({ overs: 1 });
+    m.over([1, 0, 0, 0, 0, 0]);
+    m.endInnings("overs");
+    m.startInnings2(["Zain", "Faisal"], "Usman");
+    return m;
+  }
+
+  it("is null in the first innings", () => {
+    const m = new TestMatch({ overs: 1 });
+    expect(chaseNeed(m.state, m.inn)).toBeNull();
+  });
+
+  it("gives the runs needed and the balls left in the chase", () => {
+    const m = chase();
+    expect(chaseNeed(m.state, m.inn)).toEqual({ needed: 2, ballsLeft: 6 });
+    m.ball({ runs: 0 });
+    expect(chaseNeed(m.state, m.inn)).toEqual({ needed: 2, ballsLeft: 5 });
+  });
+
+  it("is null once the target is reached or the innings has ended", () => {
+    const m = chase();
+    m.ball({ runs: 2 });
+    expect(chaseNeed(m.state, m.inn)).toBeNull();
+    const ended = chase();
+    ended.endInnings("manual");
+    expect(chaseNeed(ended.state, ended.inn)).toBeNull();
+  });
+});
+
+describe("playerName", () => {
+  it("falls back to the id for a player that is not in the match", () => {
+    const m = new TestMatch();
+    expect(playerName(m.state.players, m.id("Ali"))).toBe("Ali");
+    expect(playerName(m.state.players, "p-unknown")).toBe("p-unknown");
   });
 });

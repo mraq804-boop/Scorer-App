@@ -1,7 +1,7 @@
 "use client";
 
 import { useId } from "react";
-import { BallChips, commentaryById } from "@/components/scoring/ball-chips";
+import { BallChips, commentaryById } from "@/components/match/ball-chips";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { t } from "@/lib/i18n";
 import type { InningsState, MatchState } from "@/lib/scoring";

@@ -1,4 +1,4 @@
-import { formatOvers } from "@/lib/scoring";
+import { formatOvers, playerName } from "@/lib/scoring";
 import type { BatterLine, BowlerLine, CommentaryItem, InningsState, MatchState, Player, Result, Warning } from "@/lib/scoring";
 import { t } from "./index";
 
@@ -6,10 +6,6 @@ type Unit = "run" | "bye" | "legBye" | "wicket" | "ball" | "over";
 
 function count(unit: Unit, n: number): string {
   return t(`unit.${unit}.${n === 1 ? "one" : "other"}`, { n });
-}
-
-function playerName(players: Record<string, Player>, id: string): string {
-  return players[id]?.name ?? id;
 }
 
 function runsOutcome(item: CommentaryItem): string | null {

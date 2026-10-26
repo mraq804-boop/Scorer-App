@@ -17,10 +17,6 @@ async function viewerPage(browser: Browser, baseURL: string | undefined): Promis
   return context.newPage();
 }
 
-function liveScore(page: Page) {
-  return page.getByTestId("live-score");
-}
-
 async function scoreTwoBalls(page: Page): Promise<string> {
   const matchId = await startMatch(page);
   await runs(page, 1, 1);
@@ -45,10 +41,10 @@ test.describe("with a backend", () => {
     const viewer = await viewerPage(browser, baseURL);
     await viewer.route("**/api/m/*/events*", (route) => route.abort());
     await viewer.goto(`/m/${code}`);
-    await expect(liveScore(viewer)).toContainText("2/0");
+    await expect(score(viewer)).toContainText("2/0");
 
     await runs(page, 4);
-    await expect(liveScore(viewer)).toContainText("6/0", { timeout: REALTIME_WAIT_MS });
+    await expect(score(viewer)).toContainText("6/0", { timeout: REALTIME_WAIT_MS });
     await expect(viewer.getByTestId("live-commentary").locator("li").first()).toContainText("FOUR");
   });
 
@@ -58,7 +54,7 @@ test.describe("with a backend", () => {
     const viewer = await viewerPage(browser, baseURL);
     await viewer.routeWebSocket(/realtime/, (ws) => ws.close());
     await viewer.goto(`/m/${code}`);
-    await expect(liveScore(viewer)).toContainText("2/0");
+    await expect(score(viewer)).toContainText("2/0");
 
     const polledNewBall = viewer.waitForResponse(
       async (response) =>
@@ -67,7 +63,7 @@ test.describe("with a backend", () => {
         ((await response.json()) as { events: unknown[] }).events.length > 0,
     );
     await runs(page, 4);
-    await expect(liveScore(viewer)).toContainText("6/0", { timeout: POLL_MS + 5000 });
+    await expect(score(viewer)).toContainText("6/0", { timeout: POLL_MS + 5000 });
     await polledNewBall;
   });
 

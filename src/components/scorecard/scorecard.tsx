@@ -1,17 +1,12 @@
 import type { ReactNode } from "react";
 import { t } from "@/lib/i18n";
 import { formatDismissal } from "@/lib/i18n/cricket";
-import { boundaryPct, dotBallPct, economy, formatOvers, strikeRate } from "@/lib/scoring";
-import type { BatterLine, BowlerLine, InningsState, MatchState, Player } from "@/lib/scoring";
+import { boundaryPct, dotBallPct, economy, formatOvers, playerName, strikeRate } from "@/lib/scoring";
+import type { BatterLine, BowlerLine, InningsState, MatchState } from "@/lib/scoring";
 import { cn } from "@/lib/utils";
 
-type Players = Record<string, Player>;
 type Column<Row> = { label: string; width: string; value: (row: Row) => string | number; bold?: boolean };
 type InningsProps = { state: MatchState; innings: InningsState };
-
-function nameOf(players: Players, id: string): string {
-  return players[id]?.name ?? id;
-}
 
 function percent(value: number): string {
   return t("scorecard.percent", { pct: Number(value.toFixed(1)) });
@@ -121,7 +116,7 @@ function Batting({ state, innings }: InningsProps) {
         rows={innings.batting}
         renderName={(line) => (
           <>
-            <Name className="font-semibold">{nameOf(state.players, line.playerId)}</Name>
+            <Name className="font-semibold">{playerName(state.players, line.playerId)}</Name>
             <Name className="text-xs text-muted-foreground">{formatDismissal(line, state.players)}</Name>
           </>
         )}
@@ -170,7 +165,7 @@ function Bowling({ state, innings }: InningsProps) {
         nameLabel={t("scorecard.bowler")}
         columns={bowlingColumns(state.rules.ballsPerOver)}
         rows={innings.bowling}
-        renderName={(line) => <Name className="font-semibold">{nameOf(state.players, line.playerId)}</Name>}
+        renderName={(line) => <Name className="font-semibold">{playerName(state.players, line.playerId)}</Name>}
       />
     </Block>
   );
@@ -185,7 +180,7 @@ function FallOfWickets({ state, innings }: InningsProps) {
             <span className="num shrink-0 font-semibold">
               {t("scorecard.fallOfWicket", { wicket: fall.wicket, runs: fall.runs })}
             </span>{" "}
-            <Name className="shrink">{nameOf(state.players, fall.playerId)}</Name>{" "}
+            <Name className="shrink">{playerName(state.players, fall.playerId)}</Name>{" "}
             <span className="num shrink-0 text-muted-foreground">
               {t("scorecard.oversIn", { overs: formatOvers(fall.legalBalls, state.rules.ballsPerOver) })}
             </span>
@@ -203,11 +198,11 @@ function Partnerships({ state, innings }: InningsProps) {
         {innings.partnerships.map((pair, index) => (
           <li key={index} className="flex min-w-0 items-baseline justify-between gap-3">
             <span className="flex min-w-0 items-baseline gap-1">
-              <Name className="shrink">{nameOf(state.players, pair.batters[0])}</Name>
+              <Name className="shrink">{playerName(state.players, pair.batters[0])}</Name>
               {pair.batters[1] !== null && (
                 <>
                   <span className="shrink-0 text-muted-foreground">{t("scorecard.and")}</span>
-                  <Name className="shrink">{nameOf(state.players, pair.batters[1])}</Name>
+                  <Name className="shrink">{playerName(state.players, pair.batters[1])}</Name>
                 </>
               )}
             </span>
@@ -226,7 +221,7 @@ function OverByOver({ state, innings }: InningsProps) {
         {innings.overs.map((over) => (
           <li key={over.index} className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto] items-baseline gap-3">
             <span className="num text-muted-foreground">{t("scorecard.over", { n: over.index + 1 })}</span>
-            <Name>{nameOf(state.players, over.bowler)}</Name>
+            <Name>{playerName(state.players, over.bowler)}</Name>
             <span className="num font-semibold">{t("score.runsWickets", { runs: over.runs, wickets: over.wickets })}</span>
           </li>
         ))}
