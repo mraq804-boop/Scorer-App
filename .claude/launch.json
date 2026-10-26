@@ -12,6 +12,18 @@
         "NEXT_PUBLIC_SITE_URL": "http://localhost:3200"
       },
       "port": 3200
+    },
+    {
+      "name": "cricket-scorer-dev",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["next", "dev", "-p", "3300"],
+      "cwd": "D:\\Projects\\cricket-scorer",
+      "env": {
+        "NEXT_PUBLIC_SUPABASE_URL": "https://placeholder.supabase.co",
+        "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_placeholder_build_only",
+        "NEXT_PUBLIC_SITE_URL": "http://localhost:3300"
+      },
+      "port": 3300
     }
   ]
 }
