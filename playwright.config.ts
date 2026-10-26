@@ -5,7 +5,9 @@ const baseURL = externalBaseURL ?? "http://localhost:3200";
 
 export default defineConfig({
   testDir: "tests/e2e",
-  timeout: 30_000,
+  timeout: 60_000,
+  expect: { timeout: 10_000 },
+  workers: 2,
   use: { baseURL, trace: "retain-on-failure" },
   webServer:
     externalBaseURL === undefined

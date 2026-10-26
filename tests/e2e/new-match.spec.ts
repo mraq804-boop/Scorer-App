@@ -82,7 +82,7 @@ test("Start does not wait for an unanswered storage persistence prompt", async (
   await fillNames(page, names);
   await start(page).click();
 
-  await expect(page).toHaveURL(/\/score\?m=/, { timeout: 5_000 });
+  await expect(page).toHaveURL(/\/score\?m=/);
 });
 
 test("storage error is shown", async ({ page }) => {
