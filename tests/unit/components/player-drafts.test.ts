@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { choosePlayer, suggestNames } from "@/components/scoring/player-drafts";
+import { choosePlayer, previousBowlers, suggestNames } from "@/components/scoring/player-drafts";
 import { TestMatch } from "../../helpers/match";
 
 describe("choosePlayer", () => {
@@ -40,5 +40,54 @@ describe("suggestNames", () => {
     const m = new TestMatch();
     const skip = (player: { id: string }) => player.id === m.id("Ali");
     expect(suggestNames(m.state, "A", ["Hamza", "ALI", "Saad"], skip)).toEqual(["Usman", "Saad"]);
+  });
+});
+
+describe("previousBowlers", () => {
+  const SIX_DOTS = [0, 0, 0, 0, 0, 0];
+
+  function bowlAgain(m: TestMatch, name: string): void {
+    m.push({ type: "bowler_changed", player: m.id(name) });
+  }
+
+  function names(m: TestMatch): string[] {
+    return previousBowlers(m.inn).map((line) => m.state.players[line.playerId]?.name ?? line.playerId);
+  }
+
+  it("lists the bowler who just finished an over last at the over break", () => {
+    const m = new TestMatch();
+    m.over(SIX_DOTS);
+    m.bowler("Bilal");
+    m.over(SIX_DOTS);
+    bowlAgain(m, "Hamza");
+    m.over(SIX_DOTS);
+
+    expect(m.inn.bowler).toBeNull();
+    expect(names(m)).toEqual(["Bilal", "Hamza"]);
+  });
+
+  it("treats whoever bowled the last ball of a split over as the one who just finished", () => {
+    const m = new TestMatch();
+    m.over(SIX_DOTS);
+    m.bowler("Bilal");
+    m.over([0, 0, 0]);
+    bowlAgain(m, "Hamza");
+    m.over([0, 0, 0]);
+
+    expect(m.inn.bowler).toBeNull();
+    expect(names(m)).toEqual(["Bilal", "Hamza"]);
+  });
+
+  it("leaves out the current bowler mid-over and keeps the order they first bowled in", () => {
+    const m = new TestMatch();
+    m.over(SIX_DOTS);
+    m.bowler("Bilal");
+    m.over(SIX_DOTS);
+    m.bowler("Kamran");
+    m.over(SIX_DOTS);
+    bowlAgain(m, "Hamza");
+    m.over([0, 0]);
+
+    expect(names(m)).toEqual(["Bilal", "Kamran"]);
   });
 });

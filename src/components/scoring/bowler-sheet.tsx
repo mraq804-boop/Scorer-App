@@ -3,7 +3,7 @@
 import { useId, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { NameField, NameSuggestions } from "@/components/scoring/name-field";
-import { choosePlayer, suggestNames } from "@/components/scoring/player-drafts";
+import { choosePlayer, previousBowlers, suggestNames } from "@/components/scoring/player-drafts";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { t } from "@/lib/i18n";
@@ -30,7 +30,7 @@ export function BowlerSheet({ state, innings, recent, busy, undo, title = t("bow
   const bowled = new Set(innings.bowling.map((line) => line.playerId));
 
   const bowl = (player: string, added: EventDraft[] = []) => void onRecord([...added, { type: "bowler_changed", player }]);
-  const previous = innings.bowling.filter((line) => line.playerId !== innings.bowler);
+  const previous = previousBowlers(innings);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

@@ -1,4 +1,4 @@
-import type { EventDraft, MatchState, Player, TeamSide } from "@/lib/scoring";
+import type { BowlerLine, EventDraft, InningsState, MatchState, Player, TeamSide } from "@/lib/scoring";
 import { sameName } from "@/lib/validation/match-setup";
 
 export type PlayerChoice = { id: string; drafts: EventDraft[] };
@@ -41,4 +41,14 @@ export function suggestNames(
   for (const player of players) if (player.team === team && !skip(player)) offer(player.name);
   for (const name of recent) offer(name);
   return names;
+}
+
+export function previousBowlers(innings: InningsState): BowlerLine[] {
+  const others = innings.bowling.filter((line) => line.playerId !== innings.bowler);
+  if (innings.bowler !== null) return others;
+  const justBowled = innings.commentary.at(-1)?.bowler;
+  return [
+    ...others.filter((line) => line.playerId !== justBowled),
+    ...others.filter((line) => line.playerId === justBowled),
+  ];
 }

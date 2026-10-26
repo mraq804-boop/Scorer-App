@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { BLOCKED, NOT_OWNER, changeStoredMatch, runs, score, sendIn, startMatch, wicket } from "./support/scoring";
+import { BLOCKED, NOT_OWNER, changeStoredMatch, nextBowler, runs, score, sendIn, startMatch, wicket } from "./support/scoring";
 
 test("scores an over with extras", async ({ page }) => {
   await startMatch(page);
@@ -99,6 +99,20 @@ test("same bowler twice shows a warning but is allowed", async ({ page }) => {
 
   await runs(page, 1);
   await expect(score(page)).toHaveText("1/0 (1.1)");
+});
+
+test("the bowler who just finished an over is listed last at the over break", async ({ page }) => {
+  await startMatch(page);
+  await runs(page, 0, 0, 0, 0, 0, 0);
+  await nextBowler(page, "Bilal");
+  await runs(page, 0, 0, 0, 0, 0, 0);
+  await page.getByRole("dialog", { name: "Next bowler" }).getByRole("button", { name: /^Hamza/ }).click();
+  await runs(page, 0, 0, 0, 0, 0, 0);
+
+  const previous = page.getByRole("dialog", { name: "Next bowler" }).getByRole("button", { name: /^(Hamza|Bilal)/ });
+  await expect(previous).toHaveCount(2);
+  await expect(previous.nth(0)).toContainText("Bilal");
+  await expect(previous.nth(1)).toContainText("Hamza");
 });
 
 test("all out asks and add player continues", async ({ page }) => {
