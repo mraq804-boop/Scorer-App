@@ -21,7 +21,7 @@ Scores live on the scorer's phone first and sync to Supabase when there is signa
    npx supabase link --project-ref <ref>
    npx supabase db push
    ```
-   This applies the three files in `supabase/migrations/`: tables and RLS, the RPCs, and the Realtime trigger and topic policy. Repeat `link` and `db push` for the other project.
+   This applies the four files in `supabase/migrations/`: tables and RLS, the RPCs, the Realtime trigger and topic policy, and the claim-token clean-up. Repeat `link` and `db push` for the other project.
 7. **Project Settings → API Keys:** copy the **Project URL** and the **Publishable** key. The app never uses the secret key, so do not put it anywhere.
 
 ## 2. Check the Supabase project before launch

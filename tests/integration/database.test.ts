@@ -10,6 +10,7 @@ const STRANGER = { sub: "00000000-0000-0000-0000-0000000000d4" };
 const GUEST = { sub: "00000000-0000-0000-0000-0000000000e5", anonymous: true };
 const OTHER_GUEST = { sub: "00000000-0000-0000-0000-0000000000f6", anonymous: true };
 const BUSY_GUEST = { sub: "00000000-0000-0000-0000-0000000000a7", anonymous: true };
+const CLAIM_GUEST = { sub: "00000000-0000-0000-0000-0000000000b8", anonymous: true };
 const CODE_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
 const D1 = "00000000-0000-0000-0000-00000000d001";
 const D2 = "00000000-0000-0000-0000-00000000d002";
@@ -136,7 +137,7 @@ function flat(e: WireEvent) {
 
 beforeAll(async () => {
   db = await createDb();
-  for (const u of [A, B, C, STRANGER, GUEST, OTHER_GUEST, BUSY_GUEST]) {
+  for (const u of [A, B, C, STRANGER, GUEST, OTHER_GUEST, BUSY_GUEST, CLAIM_GUEST]) {
     await db.query(`insert into auth.users (id) values ($1)`, [u.sub]);
   }
 }, 60_000);
@@ -469,6 +470,27 @@ describe("claim_matches", () => {
     await expectDbError(claim(B, otherToken), /claim_invalid/);
     const [row] = (await db.query(`select owner_id from public.matches where id = $1`, [other.id])).rows;
     expect(row).toEqual({ owner_id: OTHER_GUEST.sub });
+  });
+
+  it("creating a token drops the caller's earlier tokens and every expired one", async () => {
+    const first = await createToken(CLAIM_GUEST);
+    const second = await createToken(CLAIM_GUEST);
+    expect(await count("service", `public.match_claims where from_user = $1`, [CLAIM_GUEST.sub])).toBe(1);
+    await expectDbError(claim(C, first), /claim_invalid/);
+
+    await createToken(OTHER_GUEST);
+    await rpc(
+      "service",
+      `insert into public.match_claims (token_hash, from_user, expires_at) values ('expired-token-hash', $1, now() - interval '1 second')`,
+      [BUSY_GUEST.sub],
+    );
+    const third = await createToken(CLAIM_GUEST);
+
+    expect(await count("service", `public.match_claims where token_hash = 'expired-token-hash'`)).toBe(0);
+    expect(await count("service", `public.match_claims where from_user = $1`, [OTHER_GUEST.sub])).toBe(1);
+    expect(await count("service", `public.match_claims where from_user = $1`, [CLAIM_GUEST.sub])).toBe(1);
+    await expectDbError(claim(C, second), /claim_invalid/);
+    expect(await claim(C, third)).toBe(0);
   });
 
   it("stores only the token's hash", async () => {
