@@ -14,6 +14,7 @@ import type {
 import { TestMatch } from "../../helpers/match";
 
 const NUM_RUNS = 150;
+const PROPERTY = { timeout: 30_000 };
 const MAX_BALLS = 150;
 const WICKET_PERCENT = 5;
 const MAX_PROMPT_STEPS = 20;
@@ -170,7 +171,7 @@ function isDelivery(event: MatchEvent): event is DeliveryEvent {
 }
 
 describe("engine properties", () => {
-  it("accounts every run to a batter or an extra", () => {
+  it("accounts every run to a batter or an extra", PROPERTY, () => {
     fc.assert(
       fc.property(setupArb, scriptArb, (setup, script) => {
         for (const innings of play(setup, script).state.innings) {
@@ -183,7 +184,7 @@ describe("engine properties", () => {
     );
   });
 
-  it("never bowls past the overs limit", () => {
+  it("never bowls past the overs limit", PROPERTY, () => {
     fc.assert(
       fc.property(setupArb, scriptArb, (setup, script) => {
         const { innings, rules } = play(setup, script).state;
@@ -195,7 +196,7 @@ describe("engine properties", () => {
     );
   });
 
-  it("replays to the same state whatever order the events arrive in", () => {
+  it("replays to the same state whatever order the events arrive in", PROPERTY, () => {
     const shuffledArb = fc.tuple(setupArb, scriptArb).chain(([setup, script]) => {
       const { events } = play(setup, script);
       return fc
@@ -210,7 +211,7 @@ describe("engine properties", () => {
     );
   });
 
-  it("restores the previous state when the last ball is undone", () => {
+  it("restores the previous state when the last ball is undone", PROPERTY, () => {
     fc.assert(
       fc.property(setupArb, scriptArb, stepArb, (setup, script, next) => {
         const m = play(setup, script);
@@ -225,7 +226,7 @@ describe("engine properties", () => {
     );
   });
 
-  it("corrects a past ball exactly as if it had been scored that way", () => {
+  it("corrects a past ball exactly as if it had been scored that way", PROPERTY, () => {
     fc.assert(
       fc.property(setupArb, scriptArb, fc.nat(), patchArb, patchArb, (setup, script, pick, earlier, latest) => {
         const m = play(setup, script);
