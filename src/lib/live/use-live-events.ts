@@ -11,6 +11,12 @@ function pollMs(): number {
   return Number.isInteger(configured) && configured > 0 ? configured : DEFAULT_POLL_MS;
 }
 
+export function realtimeUrl(supabaseUrl: string): string {
+  const url = new URL("realtime/v1", supabaseUrl.endsWith("/") ? supabaseUrl : `${supabaseUrl}/`);
+  url.protocol = url.protocol.replace("http", "ws");
+  return url.href;
+}
+
 async function loadRealtimeClient() {
   try {
     return (await import("@supabase/realtime-js")).RealtimeClient;
@@ -32,7 +38,7 @@ export function useLiveEvents(matchId: string, code: string, initial: MatchEvent
         createClient: () => {
           if (RealtimeClient === null) throw new Error("realtime is unavailable");
           const apikey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
-          return new RealtimeClient(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/realtime/v1`, {
+          return new RealtimeClient(realtimeUrl(process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""), {
             params: { apikey },
             accessToken: async () => apikey,
           });
