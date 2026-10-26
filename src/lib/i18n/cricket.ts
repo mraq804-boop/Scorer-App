@@ -76,6 +76,10 @@ export function formatNeed(runs: number, ballsLeft: number): string {
   return t("score.need", { runs, balls: count("ball", ballsLeft) });
 }
 
+export function formatChase(line: string, runs: number, ballsLeft: number): string {
+  return t("share.chase", { line, runs, balls: count("ball", ballsLeft) });
+}
+
 export function formatFigures(line: BowlerLine, ballsPerOver: number): string {
   return t("score.figures", {
     overs: formatOvers(line.legalBalls, ballsPerOver),

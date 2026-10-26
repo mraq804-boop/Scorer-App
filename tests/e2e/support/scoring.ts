@@ -1,14 +1,17 @@
 import { expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-export type Setup = { overs?: number; teamAPlayers?: number };
+type Name = "teamA" | "teamB" | "striker" | "nonStriker" | "bowler";
+
+export type Setup = { overs?: number; teamAPlayers?: number; names?: Partial<Record<Name, string>> };
 
 export const BLOCKED = "Not synced — scoring moved to another phone";
 
 export async function startMatch(page: Page, setup: Setup = {}): Promise<string> {
+  const names = { teamA: "Lions", teamB: "Tigers", striker: "Ali", nonStriker: "Usman", bowler: "Hamza", ...setup.names };
   await page.goto("/new");
-  await page.getByRole("textbox", { name: "Team A", exact: true }).fill("Lions");
-  await page.getByRole("textbox", { name: "Team B", exact: true }).fill("Tigers");
+  await page.getByRole("textbox", { name: "Team A", exact: true }).fill(names.teamA);
+  await page.getByRole("textbox", { name: "Team B", exact: true }).fill(names.teamB);
   if (setup.overs !== undefined) {
     await page.getByRole("spinbutton", { name: "Custom overs" }).fill(String(setup.overs));
   }
@@ -17,9 +20,9 @@ export async function startMatch(page: Page, setup: Setup = {}): Promise<string>
     const decrease = page.getByRole("button", { name: "Decrease Team A players" });
     for (let players = 11; players > setup.teamAPlayers; players -= 1) await decrease.click();
   }
-  await page.getByLabel("Striker", { exact: true }).fill("Ali");
-  await page.getByLabel("Non-striker", { exact: true }).fill("Usman");
-  await page.getByLabel("Opening bowler", { exact: true }).fill("Hamza");
+  await page.getByLabel("Striker", { exact: true }).fill(names.striker);
+  await page.getByLabel("Non-striker", { exact: true }).fill(names.nonStriker);
+  await page.getByLabel("Opening bowler", { exact: true }).fill(names.bowler);
   await page.getByRole("button", { name: "Start match" }).click();
   await expect(page).toHaveURL(/\/score\?m=/);
   await expect(score(page)).toHaveText("0/0 (0)");

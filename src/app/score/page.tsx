@@ -148,6 +148,7 @@ function MatchScreen({ matchId }: { matchId: string }) {
         innings={innings}
         actions={
           <MatchMenu
+            local={local}
             state={state}
             blocked={blocked}
             busy={busy}

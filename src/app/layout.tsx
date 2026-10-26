@@ -3,12 +3,14 @@ import { Bricolage_Grotesque, Figtree } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "sonner";
 import { t } from "@/lib/i18n";
+import { siteUrl } from "@/lib/site-url";
 import "./globals.css";
 
 const figtree = Figtree({ variable: "--font-figtree", subsets: ["latin"] });
 const bricolage = Bricolage_Grotesque({ variable: "--font-display", subsets: ["latin"], weight: ["500", "600", "700", "800"] });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl()),
   title: { default: t("app.name"), template: `%s · ${t("app.name")}` },
   description: t("home.tagline"),
   applicationName: t("app.name"),

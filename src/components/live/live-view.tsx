@@ -4,6 +4,7 @@ import { useId, useMemo, useState } from "react";
 import { Scoreboard } from "@/components/match/scoreboard";
 import { ThisOver } from "@/components/match/this-over";
 import { Scorecard } from "@/components/scorecard/scorecard";
+import { ShareButtons } from "@/components/share/share-buttons";
 import { t } from "@/lib/i18n";
 import { formatCommentary, formatResult } from "@/lib/i18n/cricket";
 import { useLiveEvents } from "@/lib/live/use-live-events";
@@ -97,6 +98,7 @@ export function LiveView({ match, initialEvents }: LiveViewProps) {
       <div role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${tab}-tab`} className="flex min-w-0 flex-col">
         {tab === "live" ? <LivePanel state={state} innings={innings} /> : <Scorecard state={state} />}
       </div>
+      <ShareButtons code={match.code} state={state} />
     </div>
   );
 }

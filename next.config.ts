@@ -32,6 +32,10 @@ const nextConfig: NextConfig = {
   experimental: {
     useOffline: true,
   },
+  outputFileTracingIncludes: {
+    "/m/*/card": ["src/assets/fonts/**"],
+    "/m/*/opengraph-image": ["src/assets/fonts/**"],
+  },
   turbopack: {
     rules: {
       "*.css": {

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeftRight, ClipboardList, EllipsisVertical, Flag, LogOut, Pencil, Repeat, SlidersHorizontal } from "lucide-react";
+import { ArrowLeftRight, ClipboardList, EllipsisVertical, Flag, LogOut, Pencil, Repeat, Share2, SlidersHorizontal } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 import { BallListSheet } from "@/components/scoring/ball-list-sheet";
@@ -8,6 +8,7 @@ import { BowlerSheet } from "@/components/scoring/bowler-sheet";
 import { RetireSheet } from "@/components/scoring/retire-sheet";
 import { SettingsSheet } from "@/components/scoring/settings-sheet";
 import { Scorecard } from "@/components/scorecard/scorecard";
+import { ShareButtons } from "@/components/share/share-buttons";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -18,13 +19,17 @@ import {
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { t } from "@/lib/i18n";
+import { getLocalDb } from "@/lib/local/db";
+import type { LocalMatch } from "@/lib/local/db";
 import { currentInnings } from "@/lib/scoring";
 import type { EventDraft, InningsState, MatchState } from "@/lib/scoring";
+import { flushSync } from "@/lib/sync/flush";
 
-type Panel = "menu" | "bowler" | "retire" | "balls" | "settings" | "end" | "scorecard";
+type Panel = "menu" | "bowler" | "retire" | "balls" | "settings" | "end" | "scorecard" | "share";
 type OnRecord = (drafts: EventDraft[]) => Promise<boolean>;
 
 type MatchMenuProps = {
+  local: Pick<LocalMatch, "id" | "code" | "syncedSeq">;
   state: MatchState;
   blocked: boolean;
   busy: boolean;
@@ -107,11 +112,33 @@ function ScorecardSheet({ state, onClose }: { state: MatchState; onClose: () => 
   );
 }
 
-export function MatchMenu({ state, blocked, busy, recent, onRecord, onEditBall }: MatchMenuProps) {
+function ShareSheet({ local, state, onClose }: { local: MatchMenuProps["local"]; state: MatchState; onClose: () => void }) {
+  return (
+    <Drawer open onOpenChange={(open) => !open && onClose()}>
+      <DrawerContent aria-describedby={undefined} className="mx-auto max-w-md">
+        <DrawerHeader>
+          <DrawerTitle className="text-xl font-bold">{t("share.sheetTitle")}</DrawerTitle>
+        </DrawerHeader>
+        <div className="px-4 pb-safe">
+          <ShareButtons
+            code={local.code}
+            state={state}
+            beforeShare={async () => {
+              await flushSync(getLocalDb(), local.id);
+            }}
+          />
+        </div>
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
+export function MatchMenu({ local, state, blocked, busy, recent, onRecord, onEditBall }: MatchMenuProps) {
   const [panel, setPanel] = useState<Panel | null>(null);
   const live = currentInnings(state);
   const locked = blocked || busy || live === null;
   const bowled = state.innings.some((innings) => innings.overs.length > 0);
+  const shareable = local.syncedSeq > 0;
   const close = () => setPanel(null);
 
   const recordAndClose: OnRecord = async (drafts) => {
@@ -155,6 +182,8 @@ export function MatchMenu({ state, blocked, busy, recent, onRecord, onEditBall }
               <MenuItem icon={SlidersHorizontal} label={t("menu.settings")} disabled={locked} onClick={() => setPanel("settings")} />
               <MenuItem icon={Flag} label={t("score.endInnings")} disabled={locked} onClick={() => setPanel("end")} />
               <MenuItem icon={ClipboardList} label={t("scorecard.title")} onClick={() => setPanel("scorecard")} />
+              <MenuItem icon={Share2} label={t("menu.share")} disabled={!shareable} onClick={() => setPanel("share")} />
+              {!shareable && <p className="px-3 pb-2 text-sm text-muted-foreground">{t("share.waitForSync")}</p>}
             </div>
           </DrawerContent>
         </Drawer>
@@ -190,6 +219,7 @@ export function MatchMenu({ state, blocked, busy, recent, onRecord, onEditBall }
         <EndInningsDialog innings={live} busy={busy} onClose={close} onRecord={onRecord} />
       )}
       {panel === "scorecard" && <ScorecardSheet state={state} onClose={close} />}
+      {panel === "share" && shareable && <ShareSheet local={local} state={state} onClose={close} />}
     </>
   );
 }
