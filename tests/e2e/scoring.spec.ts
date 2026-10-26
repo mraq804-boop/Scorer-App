@@ -22,7 +22,10 @@ test("toggles reset after a ball", async ({ page }) => {
 
   await toggle("wide").click();
   await expect(toggle("wide")).toHaveAttribute("aria-pressed", "true");
+  await expect(toggle("bye")).toBeDisabled();
+  await expect(toggle("legbye")).toBeDisabled();
   await toggle("noball").click();
+  await expect(toggle("bye")).toBeEnabled();
   await expect(toggle("wide")).toHaveAttribute("aria-pressed", "false");
   await toggle("bye").click();
   await toggle("legbye").click();
@@ -40,6 +43,18 @@ test("toggles reset after a ball", async ({ page }) => {
   }
   await runs(page, 1);
   await expect(score(page)).toHaveText("3/0 (0.1)");
+});
+
+test("runs taken on a wide are wides", async ({ page }) => {
+  await startMatch(page);
+  await page.getByTestId("toggle-wide").click();
+  await page.getByTestId("toggle-bye").click({ force: true });
+  await expect(page.getByTestId("toggle-wide")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("toggle-bye")).toHaveAttribute("aria-pressed", "false");
+  await runs(page, 1);
+
+  await expect(score(page)).toHaveText("2/0 (0)");
+  await expect(page.getByTestId("toggle-bye")).toBeEnabled();
 });
 
 test("wicket asks for the next batter and the batter takes strike after a catch", async ({ page }) => {

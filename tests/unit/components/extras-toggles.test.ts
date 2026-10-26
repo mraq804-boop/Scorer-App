@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NO_EXTRAS, isPressed, toggleExtra } from "@/components/scoring/extras-toggles";
+import { NO_EXTRAS, isAvailable, isPressed, toggleExtra } from "@/components/scoring/extras-toggles";
 import type { ExtraToggle, ExtrasSelection } from "@/components/scoring/extras-toggles";
 
 function press(...toggles: ExtraToggle[]): ExtrasSelection {
@@ -34,8 +34,25 @@ describe("extras toggles", () => {
   it("never combines a wide with byes or leg-byes", () => {
     expect(press("bye", "wide")).toEqual({ kind: "wide", runsAs: "bat" });
     expect(press("legbye", "wide")).toEqual({ kind: "wide", runsAs: "bat" });
-    expect(press("wide", "bye")).toEqual({ kind: "legal", runsAs: "bye" });
-    expect(press("wide", "legbye")).toEqual({ kind: "legal", runsAs: "legbye" });
+  });
+
+  it("keeps the wide when Bye or Leg-bye is pressed during it, because runs on a wide are wides", () => {
+    expect(press("wide", "bye")).toEqual({ kind: "wide", runsAs: "bat" });
+    expect(press("wide", "legbye")).toEqual({ kind: "wide", runsAs: "bat" });
+    expect(press("wide", "bye", "wide")).toEqual(NO_EXTRAS);
+  });
+
+  it("disables Bye and Leg-bye only while Wide is pressed", () => {
+    const wide = press("wide");
+    expect(isAvailable(wide, "bye")).toBe(false);
+    expect(isAvailable(wide, "legbye")).toBe(false);
+    expect(isAvailable(wide, "wide")).toBe(true);
+    expect(isAvailable(wide, "noball")).toBe(true);
+    for (const selection of [NO_EXTRAS, press("noball"), press("bye"), press("noball", "legbye")]) {
+      for (const toggle of ["wide", "noball", "bye", "legbye"] as const) {
+        expect(isAvailable(selection, toggle)).toBe(true);
+      }
+    }
   });
 
   it("allows byes and leg-byes off a no-ball", () => {

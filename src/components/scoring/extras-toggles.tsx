@@ -20,13 +20,18 @@ function isKind(toggle: ExtraToggle): toggle is "wide" | "noball" {
   return toggle === "wide" || toggle === "noball";
 }
 
+export function isAvailable(selection: ExtrasSelection, toggle: ExtraToggle): boolean {
+  return isKind(toggle) || selection.kind !== "wide";
+}
+
 export function toggleExtra(current: ExtrasSelection, toggle: ExtraToggle): ExtrasSelection {
+  if (!isAvailable(current, toggle)) return current;
   if (isKind(toggle)) {
     if (current.kind === toggle) return { ...current, kind: "legal" };
     return { kind: toggle, runsAs: toggle === "wide" ? "bat" : current.runsAs };
   }
   if (current.runsAs === toggle) return { ...current, runsAs: "bat" };
-  return { kind: current.kind === "wide" ? "legal" : current.kind, runsAs: toggle };
+  return { ...current, runsAs: toggle };
 }
 
 export function isPressed(selection: ExtrasSelection, toggle: ExtraToggle): boolean {
@@ -45,17 +50,19 @@ export function ExtrasToggles({ value, disabled, dimmed, onChange }: ExtrasToggl
     <div role="group" aria-label={t("score.extras")} className={cn("grid grid-cols-4 gap-2", dimmed && "opacity-40")}>
       {TOGGLES.map(({ toggle, label }) => {
         const pressed = isPressed(value, toggle);
+        const available = isAvailable(value, toggle);
         return (
           <button
             key={toggle}
             type="button"
             data-testid={`toggle-${toggle}`}
             aria-pressed={pressed}
-            disabled={disabled}
+            disabled={disabled || !available}
             onClick={() => onChange(toggleExtra(value, toggle))}
             className={cn(
               "h-12 min-w-0 rounded-xl border-2 px-1 text-sm font-bold transition-colors outline-none select-none focus-visible:ring-3 focus-visible:ring-ring/60",
               pressed ? "border-haldi bg-haldi text-black" : "border-border bg-card text-foreground",
+              !available && "opacity-40",
             )}
           >
             <span className="block truncate">{label}</span>
