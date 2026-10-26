@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { t } from "@/lib/i18n";
 import { startGoogleSignIn } from "@/lib/identity/google";
 import { getLocalDb } from "@/lib/local/db";
-import { siteUrl } from "@/lib/site-url";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
 
 type View =
@@ -57,7 +56,7 @@ function SignInPrompt({ client }: { client: SupabaseClient }) {
     setBusy(true);
     setFailed(false);
     try {
-      await startGoogleSignIn(client, getLocalDb(), siteUrl());
+      await startGoogleSignIn(client, getLocalDb(), window.location.origin);
     } catch {
       setFailed(true);
     } finally {

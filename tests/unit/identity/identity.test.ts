@@ -285,27 +285,27 @@ describe("guestSessionKeeper", () => {
 });
 
 describe("startGoogleSignIn", () => {
-  const SITE = "https://score.example";
+  const ORIGIN = "https://score.example";
   const claimToken = { create_claim_token: () => ({ data: "claim-token", error: null }) };
 
   it("creates a claim token only for anonymous users with matches", async () => {
     const db = freshDb();
     await createLocalMatch(db, setup());
     const { client, order, raw } = fakeClient({ session: ANONYMOUS, rpc: claimToken });
-    await startGoogleSignIn(client, db, SITE);
+    await startGoogleSignIn(client, db, ORIGIN);
     expect(order).toEqual(["rpc:create_claim_token", "signInWithOAuth"]);
     const { options, provider } = (raw.auth.signInWithOAuth.mock.calls[0] as unknown as [
       { provider: string; options: { redirectTo: string } },
     ])[0];
     expect(provider).toBe("google");
-    expect(options.redirectTo).toBe(`${SITE}/auth/callback?next=/account`);
+    expect(options.redirectTo).toBe(`${ORIGIN}/auth/callback?next=/account`);
     expect((await db.meta.get("pendingClaim"))?.value).toBe("claim-token");
   });
 
   it("skips the claim token when an anonymous user has no matches", async () => {
     const db = freshDb();
     const { client, order } = fakeClient({ session: ANONYMOUS, rpc: claimToken });
-    await startGoogleSignIn(client, db, SITE);
+    await startGoogleSignIn(client, db, ORIGIN);
     expect(order).toEqual(["signInWithOAuth"]);
     expect(await db.meta.get("pendingClaim")).toBeUndefined();
   });
@@ -314,7 +314,7 @@ describe("startGoogleSignIn", () => {
     const db = freshDb();
     await createLocalMatch(db, setup());
     const { client, order } = fakeClient({ session: GOOGLE, rpc: claimToken });
-    await startGoogleSignIn(client, db, SITE);
+    await startGoogleSignIn(client, db, ORIGIN);
     expect(order).toEqual(["signInWithOAuth"]);
     expect(await db.meta.get("pendingClaim")).toBeUndefined();
   });
@@ -323,7 +323,7 @@ describe("startGoogleSignIn", () => {
     const db = freshDb();
     await createLocalMatch(db, setup());
     const { client, order } = fakeClient({ sessionError: new Error("refresh failed"), rpc: claimToken });
-    await expect(startGoogleSignIn(client, db, SITE)).rejects.toThrow("refresh failed");
+    await expect(startGoogleSignIn(client, db, ORIGIN)).rejects.toThrow("refresh failed");
     expect(order).toEqual([]);
     expect(await db.meta.get("pendingClaim")).toBeUndefined();
   });
@@ -335,7 +335,7 @@ describe("startGoogleSignIn", () => {
       session: ANONYMOUS,
       rpc: { create_claim_token: () => ({ data: null, error: { message: "boom" }, status: 500 }) },
     });
-    await expect(startGoogleSignIn(client, db, SITE)).rejects.toThrow("boom");
+    await expect(startGoogleSignIn(client, db, ORIGIN)).rejects.toThrow("boom");
     expect(order).toEqual(["rpc:create_claim_token"]);
     expect(await db.meta.get("pendingClaim")).toBeUndefined();
   });

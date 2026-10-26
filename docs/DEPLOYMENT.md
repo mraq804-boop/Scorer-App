@@ -13,7 +13,7 @@ Scores live on the scorer's phone first and sync to Supabase when there is signa
    - Check **Authentication → Rate Limits** for anonymous sign-ins. Mobile carriers share IP addresses, so a low per-IP limit can stop guests getting a session at a busy ground. They can still score; the balls sync once a session exists.
 4. **Authentication → URL Configuration:**
    - **Site URL:** `https://<domain>`
-   - **Redirect URLs:** `https://<domain>/auth/callback`. On the development project, also add `http://localhost:3200/auth/callback`.
+   - **Redirect URLs:** `https://<domain>/**`, plus one `/**` entry for every other host people open the app on (for example `https://www.<domain>/**` when both the apex and `www` serve the app, and `https://<project>.vercel.app/**` if that address is shared). Google sign-in returns to the host the page was opened on, at `/auth/callback?next=/account`, so a host missing from this list sends people to the Site URL instead, still signed out. On the development project, add `http://localhost:3200/**`.
 5. **Realtime → Settings:** turn **off** "Allow public access". Live updates use private channels only, and viewers join them with the publishable key.
 6. **Apply the migrations** from this repo:
    ```bash
@@ -80,7 +80,7 @@ Deploy from the Vercel dashboard or by pushing to the production branch. Then ch
 - [ ] **Live link on a second phone:** open `https://<domain>/m/<code>` on another phone. It shows the match without any sign-in, and each new ball appears within a few seconds.
 - [ ] **WhatsApp preview image:** paste the live link into a WhatsApp chat. The preview shows the scorecard image, and `curl -sI https://<domain>/m/<code>/opengraph-image` returns a PNG. WhatsApp remembers previews per link, so test with a link it has not seen.
 - [ ] **Share links use the real domain:** the WhatsApp text and the page's `og:image` start with `https://<domain>`, not `http://localhost:3200`.
-- [ ] **Google sign-in:** the button on `/account` returns to `/account` with your matches listed. If it lands on the Site URL instead, Supabase rejected the redirect: widen the Redirect URL to `https://<domain>/**`.
+- [ ] **Google sign-in:** on every host people use (apex, `www`, `vercel.app`), the button on `/account` returns to `/account` on that same host with your matches listed. If it lands on the Site URL instead, Supabase rejected the redirect: add that host's `/**` entry to the Redirect URLs.
 - [ ] **CDN caching of the polling route:** with two viewers on the live page, open DevTools → Network on one and read the response headers of `/api/m/<code>/events?after=<n>`. Expect `x-vercel-cache: HIT` on most polls. Use real viewers, not only `curl`: the page's own request uses fetch `cache: "no-cache"`. If every poll is a `MISS`, the CDN is not absorbing the load, and the fix is in `src/lib/live/feed.ts`.
 
 ## 5. Testing on a phone

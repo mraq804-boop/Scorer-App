@@ -40,6 +40,20 @@ test("the sign-in button sends the guest to Google and back to the account page"
   expect(url.searchParams.get("redirect_to")).toBe(`${baseURL}/auth/callback?next=/account`);
 });
 
+test("Google sends the guest back to the host the page was opened on", async ({ page, baseURL }) => {
+  const opened = new URL(baseURL ?? "http://localhost:3200");
+  test.skip(!["localhost", "127.0.0.1"].includes(opened.hostname), "needs a second local host name");
+  opened.hostname = opened.hostname === "localhost" ? "127.0.0.1" : "localhost";
+  const authorize = page.waitForRequest((request) => request.url().includes("/auth/v1/authorize"));
+  await page.route("**/auth/v1/authorize*", (route) => route.fulfill({ contentType: "text/html", body: "<title>stub</title>" }));
+  await page.goto(`${opened.origin}/account`);
+
+  await page.getByRole("button", { name: "Sign in with Google" }).click();
+
+  const url = new URL((await authorize).url());
+  expect(url.searchParams.get("redirect_to")).toBe(`${opened.origin}/auth/callback?next=/account`);
+});
+
 test("a page restored from the back-forward cache is reloaded, a normal show is not", async ({ page }) => {
   await page.goto("/account");
   await expect(page.getByRole("button", { name: "Sign in with Google" })).toBeVisible();
