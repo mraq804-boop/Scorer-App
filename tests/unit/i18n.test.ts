@@ -7,6 +7,7 @@ describe("i18n", () => {
     expect(t("sync.synced")).toBe("Synced");
     expect(t("prompt.allOut")).toBe("All out — end innings, or add a player?");
     expect(t("sync.blocked")).toBe("Not synced — scoring moved to another phone");
+    expect(t("account.takeOver.body")).toBe("Balls not yet synced from the other phone won't be included.");
   });
 
   it("interpolates variables", () => {

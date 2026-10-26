@@ -7,7 +7,23 @@ import { summarize } from "@/lib/share/summary";
 
 type OwnerMatchRow = { code: string; title: string; team_a: string; team_b: string; rules: Rules };
 
+type OwnerMatchState = { status: string; scoring_device: string; last_seq: number };
+
 const PAGE_SIZE = 1000;
+
+export function canTakeOver(
+  server: OwnerMatchState,
+  local: Pick<LocalMatch, "syncState" | "lastSeq"> | undefined,
+  deviceId: string,
+): boolean {
+  if (server.status === "complete") return false;
+  return (
+    server.scoring_device !== deviceId ||
+    local === undefined ||
+    local.syncState === "blocked" ||
+    local.lastSeq < server.last_seq
+  );
+}
 
 function orphanKey(matchId: string): string {
   return `orphaned:${matchId}`;
