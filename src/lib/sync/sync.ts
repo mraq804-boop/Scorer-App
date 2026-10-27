@@ -2,8 +2,9 @@ import { newMatchCode } from "@/lib/local/code";
 import type { LocalDb, LocalMatch } from "@/lib/local/db";
 import { getDeviceId, loadEvents } from "@/lib/local/matches";
 import { replay } from "@/lib/scoring";
-import type { MatchEvent } from "@/lib/scoring";
-import type { PushFn, PushMatch } from "./push";
+import type { MatchEvent, MatchState } from "@/lib/scoring";
+import { matchRecord } from "@/lib/team";
+import type { PushFn, PushMatch, SquadPushFn } from "./push";
 
 export type SyncOutcome = "synced" | "pending" | "blocked";
 
@@ -14,6 +15,7 @@ export type SyncLoopOptions = {
   push: PushFn;
   claim: () => Promise<void>;
   isReady: () => boolean | Promise<boolean>;
+  pushSquad?: SquadPushFn;
 };
 
 type Loop = { trigger: () => void; stop: () => void };
@@ -93,8 +95,17 @@ async function recordBlocked(
   });
 }
 
+function teamLink(match: LocalMatch, events: MatchEvent[], state: MatchState): PushMatch["team"] {
+  if (match.team === undefined) return undefined;
+  const { id, side, fixtureId, xi } = match.team;
+  const startedAt = events.find((event) => event.type === "match_created")?.at ?? match.createdAt;
+  const xiIds = xi.map((player) => player.id);
+  return { id, side, fixtureId, record: matchRecord(state, side, xiIds, startedAt) };
+}
+
 function pushMatch(match: LocalMatch, events: MatchEvent[]): PushMatch {
   const state = replay(events);
+  const team = teamLink(match, events, state);
   return {
     id: match.id,
     code: match.code,
@@ -104,6 +115,7 @@ function pushMatch(match: LocalMatch, events: MatchEvent[]): PushMatch {
     rules: state.rules,
     status: state.status === "complete" ? "complete" : "in_progress",
     summary: match.summary,
+    ...(team === undefined ? {} : { team }),
   };
 }
 
@@ -184,7 +196,16 @@ export function requestSync(): void {
   activeLoop?.trigger();
 }
 
-export function startSyncLoop({ db, push, claim, isReady }: SyncLoopOptions): () => void {
+async function squadSettled(db: LocalDb, pushSquad: SquadPushFn | undefined): Promise<boolean> {
+  if (pushSquad === undefined) return true;
+  try {
+    return await pushSquad(db);
+  } catch {
+    return false;
+  }
+}
+
+export function startSyncLoop({ db, push, claim, isReady, pushSquad }: SyncLoopOptions): () => void {
   activeLoop?.stop();
 
   let stopped = false;
@@ -201,7 +222,10 @@ export function startSyncLoop({ db, push, claim, isReady }: SyncLoopOptions): ()
   async function attemptPass(): Promise<boolean> {
     if (!(await isReady())) return !(await hasUnsyncedMatches(db));
     if (stopped) return true;
-    return (await syncAll(db, push, { claim })) === "synced";
+    const squadDone = await squadSettled(db, pushSquad);
+    if (stopped) return true;
+    const matchesDone = (await syncAll(db, push, { claim })) === "synced";
+    return squadDone && matchesDone;
   }
 
   async function pass(): Promise<void> {

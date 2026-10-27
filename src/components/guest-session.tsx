@@ -9,6 +9,7 @@ import { getLocalDb } from "@/lib/local/db";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
 import { supabasePush } from "@/lib/sync/push";
 import { requestSync, startSyncLoop } from "@/lib/sync/sync";
+import { supabaseSquadPush } from "@/lib/team/remote";
 
 type TokenWaiter = { resolve: (token: string) => void; reject: (reason: Error) => void };
 
@@ -47,6 +48,7 @@ export function GuestSession() {
         await completeClaim(client, db);
       },
       isReady: session.isReady,
+      pushSquad: supabaseSquadPush(client),
     });
     const onOnline = () => void session.ensure();
     window.addEventListener("online", onOnline);

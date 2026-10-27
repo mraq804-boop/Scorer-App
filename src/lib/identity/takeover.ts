@@ -1,11 +1,22 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { LocalDb, LocalMatch, StoredEvent } from "@/lib/local/db";
+import type { CachedTeam, LocalDb, LocalMatch, StoredEvent } from "@/lib/local/db";
 import { getDeviceId } from "@/lib/local/matches";
 import { replay } from "@/lib/scoring";
-import type { MatchEvent, Rules } from "@/lib/scoring";
+import type { MatchEvent, MatchState, Rules, TeamSide } from "@/lib/scoring";
 import { summarize } from "@/lib/share/summary";
+import { getCachedTeam } from "@/lib/team/local";
 
-type OwnerMatchRow = { code: string; title: string; team_a: string; team_b: string; rules: Rules };
+type OwnerMatchRow = {
+  code: string;
+  title: string;
+  team_a: string;
+  team_b: string;
+  rules: Rules;
+  team_id: string | null;
+  team_side: TeamSide | null;
+  fixture_id: string | null;
+  player_stats: { xi?: unknown } | null;
+};
 
 type OwnerMatchState = { status: string; scoring_device: string; last_seq: number };
 
@@ -33,11 +44,25 @@ function orphanKey(matchId: string): string {
 async function fetchOwnerMatch(client: SupabaseClient, matchId: string): Promise<OwnerMatchRow> {
   const { data, error } = await client
     .from("matches")
-    .select("code, title, team_a, team_b, rules")
+    .select("code, title, team_a, team_b, rules, team_id, team_side, fixture_id, player_stats")
     .eq("id", matchId)
     .single();
   if (error !== null) throw new Error(error.message);
   return data as OwnerMatchRow;
+}
+
+function restoreTeam(row: OwnerMatchRow, state: MatchState, cached: CachedTeam | undefined): LocalMatch["team"] {
+  if (row.team_id === null || row.team_side === null) return undefined;
+  const squadNames = new Map(cached?.id === row.team_id ? cached.squad.map((player) => [player.id, player.name]) : []);
+  const xiIds = Array.isArray(row.player_stats?.xi)
+    ? row.player_stats.xi.filter((id): id is string => typeof id === "string")
+    : [];
+  return {
+    id: row.team_id,
+    side: row.team_side,
+    fixtureId: row.fixture_id,
+    xi: xiIds.map((id) => ({ id, name: state.players[id]?.name ?? squadNames.get(id) ?? "" })),
+  };
 }
 
 function highestSeq(events: MatchEvent[]): number {
@@ -105,7 +130,9 @@ export async function takeOverScoring(client: SupabaseClient, db: LocalDb, match
 
   const lastSeq = highestSeq(events);
   if (lastSeq < taken.data) throw new Error("The owner events were read incompletely");
-  const summary = summarize(replay(events));
+  const state = replay(events);
+  const summary = summarize(state);
+  const team = restoreTeam(row, state, await getCachedTeam(db));
   const stored = withMatchId(matchId, events);
   const now = new Date().toISOString();
 
@@ -130,6 +157,7 @@ export async function takeOverScoring(client: SupabaseClient, db: LocalDb, match
       rules: row.rules,
       teams: [row.team_a, row.team_b],
       title: row.title,
+      ...(team === undefined ? {} : { team }),
     });
   });
 

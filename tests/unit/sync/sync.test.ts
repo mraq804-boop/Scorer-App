@@ -3,8 +3,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultRules, deliveryDraft, replay } from "@/lib/scoring";
 import type { EventDraft, MatchEvent } from "@/lib/scoring";
+import { matchRecord } from "@/lib/team";
 import { CODE_RE } from "@/lib/local/code";
 import { LocalDb } from "@/lib/local/db";
+import type { LocalMatch } from "@/lib/local/db";
 import { appendEvents, createLocalMatch, getDeviceId, loadEvents } from "@/lib/local/matches";
 import type { MatchSetup } from "@/lib/local/matches";
 import { supabasePush } from "@/lib/sync/push";
@@ -12,6 +14,7 @@ import type { PushError, PushFn, PushResult } from "@/lib/sync/push";
 import { REFUSED_DELAY_MS, nextDelay, requestSync, startSyncLoop, syncAll, syncMatch } from "@/lib/sync/sync";
 import { fromWire, toWire } from "@/lib/sync/wire";
 import { TestMatch } from "../../helpers/match";
+import { TEAM_ID } from "../../helpers/team";
 
 type PushCall = Parameters<PushFn>[0];
 
@@ -1062,5 +1065,238 @@ describe("startSyncLoop", () => {
     await settle();
 
     expect(fake.calls).toHaveLength(1);
+  });
+});
+
+describe("team matches", () => {
+  const XI = ["p-Ali", "p-Usman", "p-Zain", "p-Faisal"];
+  const FIXTURE_ID = "44444444-4444-4444-8444-444444444444";
+
+  function finished(): TestMatch {
+    const m = new TestMatch({ overs: 1 });
+    for (let i = 0; i < 6; i++) m.ball({ runs: 1 });
+    m.endInnings("overs");
+    m.startInnings2(["Zain", "Faisal"], "Usman");
+    for (let i = 0; i < 6; i++) m.ball({ runs: 0 });
+    m.endInnings("overs");
+    return m;
+  }
+
+  function team(side: "A" | "B", fixtureId: string | null = FIXTURE_ID): NonNullable<LocalMatch["team"]> {
+    return { id: TEAM_ID, side, fixtureId, xi: XI.map((id) => ({ id, name: id.slice(2) })) };
+  }
+
+  async function seedTeamMatch(db: LocalDb, events: MatchEvent[], linked?: LocalMatch["team"]): Promise<string> {
+    const id = await seedFromEvents(db, events);
+    if (linked !== undefined) await db.matches.update(id, { team: linked });
+    return id;
+  }
+
+  it("sends the team link with the record computed from the replayed match", async () => {
+    const db = freshDb();
+    const m = finished();
+    const id = await seedTeamMatch(db, m.events, team("A"));
+    const fake = server();
+
+    expect(await syncMatch(db, id, fake.push)).toBe("synced");
+
+    const [call] = fake.calls;
+    expect(call.match.team).toEqual({
+      id: TEAM_ID,
+      side: "A",
+      fixtureId: FIXTURE_ID,
+      record: matchRecord(replay(m.events), "A", XI, m.events[0].at),
+    });
+    expect(call.match.team?.record).toMatchObject({
+      version: 1,
+      side: "A",
+      opponent: "Tigers",
+      playedAt: m.events[0].at,
+      xi: XI,
+      outcome: "won",
+    });
+    expect(call.match.team?.record.players.map((player) => player.playerId)).toEqual(XI);
+    expect(call.match.team?.record.players.find((player) => player.playerId === "p-Ali")?.batting).toMatchObject({ runs: expect.any(Number) });
+  });
+
+  it("works out the outcome from the team's own side", async () => {
+    const db = freshDb();
+    const m = finished();
+    const id = await seedTeamMatch(db, m.events, team("B", null));
+    const fake = server();
+
+    await syncMatch(db, id, fake.push);
+
+    expect(fake.calls[0].match.team).toMatchObject({ side: "B", fixtureId: null, record: { side: "B", opponent: "Lions", outcome: "lost" } });
+  });
+
+  it("has no outcome while the match is still being played", async () => {
+    const db = freshDb();
+    const m = new TestMatch({ overs: 2 });
+    m.ball({ runs: 1 });
+    const id = await seedTeamMatch(db, m.events, team("A"));
+    const fake = server();
+
+    await syncMatch(db, id, fake.push);
+
+    expect(fake.calls[0].match.team?.record.outcome).toBeNull();
+    expect(fake.calls[0].match.status).toBe("in_progress");
+  });
+
+  it("recomputes the record on every push, so later balls reach the server", async () => {
+    const db = freshDb();
+    const match = await createLocalMatch(db, setup());
+    const ali = Object.values(replay(await loadEvents(db, match.id)).players).find((player) => player.name === "Ali");
+    if (ali === undefined) throw new Error("no Ali");
+    await db.matches.update(match.id, { team: { id: TEAM_ID, side: "A", fixtureId: null, xi: [{ id: ali.id, name: "Ali" }] } });
+    const fake = server();
+    await syncMatch(db, match.id, fake.push);
+    await appendEvents(db, match.id, [deliveryDraft(replay(await loadEvents(db, match.id)), { runs: 4, boundary: true })]);
+
+    await syncMatch(db, match.id, fake.push);
+
+    const [first, second] = fake.calls.map((call) => call.match.team?.record.players[0]);
+    expect(first).toMatchObject({ playerId: ali.id, batting: { runs: 0, balls: 0 } });
+    expect(second).toMatchObject({ playerId: ali.id, batting: { runs: 4, balls: 1, fours: 1 } });
+  });
+
+  it("sends no team for a match that has none", async () => {
+    const db = freshDb();
+    const match = await createLocalMatch(db, setup());
+    const fake = server();
+
+    await syncMatch(db, match.id, fake.push);
+
+    expect("team" in fake.calls[0].match).toBe(false);
+  });
+
+  it("still sends a team match's balls in the usual batches", async () => {
+    const db = freshDb();
+    const match = await createLocalMatch(db, setup());
+    await db.matches.update(match.id, { team: { id: TEAM_ID, side: "A", fixtureId: null, xi: [] } });
+    await appendEvents(db, match.id, strikeSwaps(95));
+    const fake = server();
+
+    await syncMatch(db, match.id, fake.push);
+
+    expect(fake.seqs().map((seqs) => seqs.length)).toEqual([50, 50]);
+    expect(fake.calls.every((call) => call.match.team?.id === TEAM_ID)).toBe(true);
+  });
+});
+
+describe("squad outbox in the sync loop", () => {
+  const ready = () => true;
+  const claim = async () => {};
+
+  it("pushes the squad before the match balls in the same pass", async () => {
+    const db = freshDb();
+    const match = await createLocalMatch(db, setup());
+    const order: string[] = [];
+    const fake = server();
+    const pushSquad = vi.fn(async (target: LocalDb) => {
+      expect(target).toBe(db);
+      order.push("squad");
+      return true;
+    });
+    startLoop({
+      db,
+      push: async (args) => {
+        order.push("match");
+        return fake.push(args);
+      },
+      claim,
+      isReady: ready,
+      pushSquad,
+    });
+
+    await until(async () => (await db.matches.get(match.id))?.syncState === "synced");
+
+    expect(order).toEqual(["squad", "match"]);
+  });
+
+  it("pushes the squad again on every pass, even when no match needs syncing", async () => {
+    const db = freshDb();
+    const pushSquad = vi.fn(async () => true);
+    startLoop({ db, push: server().push, claim, isReady: ready, pushSquad });
+    await until(() => pushSquad.mock.calls.length === 1);
+
+    requestSync();
+    await until(() => pushSquad.mock.calls.length === 2);
+  });
+
+  it("still pushes every match when the squad push throws, and retries the squad on the backoff", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const db = freshDb();
+    const match = await createLocalMatch(db, setup());
+    const fake = server();
+    let attempts = 0;
+    const pushSquad = vi.fn(async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("offline");
+      return true;
+    });
+    startLoop({ db, push: fake.push, claim, isReady: ready, pushSquad });
+
+    await until(async () => (await db.matches.get(match.id))?.syncState === "synced");
+    await until(() => vi.getTimerCount() === 1);
+    expect(fake.seqs()).toEqual([[1, 2, 3, 4, 5]]);
+    expect(pushSquad).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(nextDelay(0));
+    await until(() => pushSquad.mock.calls.length === 2);
+    await settle();
+
+    expect(vi.getTimerCount()).toBe(0);
+    expect(fake.calls).toHaveLength(1);
+  });
+
+  it("treats a squad push that could not send everything as a failure and backs off", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const db = freshDb();
+    const match = await createLocalMatch(db, setup());
+    const fake = server();
+    const pushSquad = vi.fn(async () => false);
+    startLoop({ db, push: fake.push, claim, isReady: ready, pushSquad });
+
+    await until(async () => (await db.matches.get(match.id))?.syncState === "synced");
+    await until(() => vi.getTimerCount() === 1);
+    await vi.advanceTimersByTimeAsync(nextDelay(0) - 1);
+    expect(pushSquad).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await until(() => pushSquad.mock.calls.length === 2);
+    await until(() => vi.getTimerCount() === 1);
+    await vi.advanceTimersByTimeAsync(nextDelay(1));
+    await until(() => pushSquad.mock.calls.length === 3);
+  });
+
+  it("does not push the squad before a session exists", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const db = freshDb();
+    await createLocalMatch(db, setup());
+    const pushSquad = vi.fn(async () => true);
+    let session = false;
+    startLoop({ db, push: server().push, claim, isReady: () => session, pushSquad });
+
+    await until(() => vi.getTimerCount() === 1);
+    expect(pushSquad).not.toHaveBeenCalled();
+
+    session = true;
+    await vi.advanceTimersByTimeAsync(2000);
+    await until(() => pushSquad.mock.calls.length === 1);
+  });
+
+  it("does not push the squad after the loop is stopped while it waited for isReady", async () => {
+    const db = freshDb();
+    const pushSquad = vi.fn(async () => true);
+    let release: (value: boolean) => void = () => {};
+    const isReady = () => new Promise<boolean>((resolve) => (release = resolve));
+    const stop = startLoop({ db, push: server().push, claim, isReady, pushSquad });
+    await settle();
+
+    stop();
+    release(true);
+    await settle();
+
+    expect(pushSquad).not.toHaveBeenCalled();
   });
 });

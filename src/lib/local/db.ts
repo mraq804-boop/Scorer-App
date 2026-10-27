@@ -1,6 +1,7 @@
 import Dexie, { type Table } from "dexie";
-import type { MatchEvent, Rules } from "@/lib/scoring";
+import type { MatchEvent, Rules, TeamSide } from "@/lib/scoring";
 import type { MatchSummary } from "@/lib/share/summary";
+import type { Season, SquadPlayer } from "@/lib/team";
 
 export type LocalMatch = {
   id: string;
@@ -15,7 +16,35 @@ export type LocalMatch = {
   rules: Rules;
   teams: [string, string];
   title: string;
+  team?: { id: string; side: TeamSide; fixtureId: string | null; xi: { id: string; name: string }[] };
 };
+
+export type CachedFixture = {
+  id: string;
+  startsAt: string;
+  opponent: string;
+  ground: string | null;
+  homeAway: "home" | "away" | null;
+  overs: number | null;
+  status: "scheduled" | "played" | "cancelled";
+  matchCode: string | null;
+  notes: string | null;
+};
+
+export type CachedTeam = {
+  id: string;
+  role: "owner" | "scorer";
+  code: string;
+  name: string;
+  homeGround: string | null;
+  timeZone: string;
+  squad: SquadPlayer[];
+  seasons: Season[];
+  fixtures: CachedFixture[];
+  fetchedAt: string;
+};
+
+export type SquadOutboxRow = SquadPlayer & { teamId: string };
 
 export type StoredEvent = MatchEvent & { matchId: string };
 
@@ -29,6 +58,8 @@ export class LocalDb extends Dexie {
   declare matches: Table<LocalMatch, string>;
   declare events: Table<StoredEvent, [string, number]>;
   declare meta: Table<MetaRow, string>;
+  declare team: Table<CachedTeam, string>;
+  declare squadOutbox: Table<SquadOutboxRow, string>;
 
   constructor(name = "cricket-scorer") {
     super(name);
@@ -36,6 +67,10 @@ export class LocalDb extends Dexie {
       matches: "id, code, updatedAt",
       events: "[matchId+seq], id, matchId",
       meta: "key",
+    });
+    this.version(2).stores({
+      team: "id",
+      squadOutbox: "id",
     });
   }
 }

@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { MatchEvent, Rules } from "@/lib/scoring";
+import type { LocalDb } from "@/lib/local/db";
+import type { MatchEvent, Rules, TeamSide } from "@/lib/scoring";
 import type { MatchSummary } from "@/lib/share/summary";
+import type { TeamMatchRecord } from "@/lib/team";
 import { toWire } from "./wire";
 
 export type PushMatch = {
@@ -12,6 +14,7 @@ export type PushMatch = {
   rules: Rules;
   status: "in_progress" | "complete";
   summary: MatchSummary;
+  team?: { id: string; side: TeamSide; fixtureId: string | null; record: TeamMatchRecord };
 };
 
 export type PushError =
@@ -27,16 +30,18 @@ export type PushResult = { ok: true; lastSeq: number } | { ok: false; error: Pus
 
 export type PushFn = (args: { match: PushMatch; device: string; events: MatchEvent[] }) => Promise<PushResult>;
 
+export type SquadPushFn = (db: LocalDb) => Promise<boolean>;
+
 const SERVER_ERRORS: readonly PushError[] = ["not_signed_in", "not_owner", "scoring_moved", "code_taken"];
 const REFUSALS: readonly string[] = ["invalid_event", "too_many_events", "quota_exceeded"];
 
-type RpcError = { message: string; code?: string };
+export type RpcError = { message: string; code?: string };
 
-function isTransient(status: number): boolean {
+export function isTransient(status: number): boolean {
   return status === 0 || status === 408 || status === 429 || status >= 500;
 }
 
-function isConstraintViolation(error: RpcError, status: number): boolean {
+export function isConstraintViolation(error: RpcError, status: number): boolean {
   return status === 409 || error.code?.startsWith("23") === true || /violates .* constraint/i.test(error.message);
 }
 

@@ -12,13 +12,25 @@ import { defaultRules, deliveryDraft, replay } from "@/lib/scoring";
 import type { MatchEvent, Rules } from "@/lib/scoring";
 import { summarize } from "@/lib/share/summary";
 import type { PushFn } from "@/lib/sync/push";
-import { nextDelay, requestSync, startSyncLoop } from "@/lib/sync/sync";
+import { nextDelay, requestSync, startSyncLoop, syncMatch } from "@/lib/sync/sync";
+import { cacheTeam } from "@/lib/team/local";
 import { TestMatch } from "../../helpers/match";
+import { TEAM_ID, cachedTeam, squadPlayer } from "../../helpers/team";
 
 type Reply = { data: unknown; error: { message: string } | null; status?: number };
 type FakeSession = { user: { id: string; is_anonymous?: boolean } };
 
-type OwnerRow = { code: string; title: string; team_a: string; team_b: string; rules: Rules };
+type OwnerRow = {
+  code: string;
+  title: string;
+  team_a: string;
+  team_b: string;
+  rules: Rules;
+  team_id: string | null;
+  team_side: "A" | "B" | null;
+  fixture_id: string | null;
+  player_stats: { xi?: unknown } | null;
+};
 
 type FakeOptions = {
   session?: FakeSession | null;
@@ -502,7 +514,17 @@ describe("takeOverScoring", () => {
   const PAGE = 1000;
 
   function ownerRow(rules: Rules): OwnerRow {
-    return { code: "abcd2345", title: "Lions v Tigers", team_a: "Lions", team_b: "Tigers", rules };
+    return {
+      code: "abcd2345",
+      title: "Lions v Tigers",
+      team_a: "Lions",
+      team_b: "Tigers",
+      rules,
+      team_id: null,
+      team_side: null,
+      fixture_id: null,
+      player_stats: null,
+    };
   }
 
   function serverMatch(balls: number): TestMatch {
@@ -514,11 +536,11 @@ describe("takeOverScoring", () => {
     return match;
   }
 
-  function serverFor(events: MatchEvent[], rules: Rules, extra: FakeOptions["rpc"] = {}) {
+  function serverFor(events: MatchEvent[], rules: Rules, extra: FakeOptions["rpc"] = {}, row = ownerRow(rules)) {
     const pages: number[] = [];
     const fake = fakeClient({
       session: GOOGLE,
-      matchRow: ownerRow(rules),
+      matchRow: row,
       rpc: {
         take_over_scoring: () => ({ data: events.length, error: null }),
         get_owner_events: (args) => {
@@ -548,7 +570,7 @@ describe("takeOverScoring", () => {
     expect(raw.rpc).toHaveBeenCalledWith("take_over_scoring", { p_match: matchId, p_device: device });
     expect(raw.rpc).toHaveBeenCalledWith("get_owner_events", { p_match: matchId, p_after: 0 });
     expect(order.slice(0, 3)).toEqual(["rpc:take_over_scoring", "from:matches", "rpc:get_owner_events"]);
-    expect(select).toHaveBeenCalledWith("code, title, team_a, team_b, rules");
+    expect(select).toHaveBeenCalledWith("code, title, team_a, team_b, rules, team_id, team_side, fixture_id, player_stats");
     expect(eq).toHaveBeenCalledWith("id", matchId);
 
     expect(await loadEvents(db, matchId)).toEqual(match.events);
@@ -747,5 +769,165 @@ describe("takeOverScoring", () => {
     expect(raw.from).not.toHaveBeenCalled();
     expect(await loadEvents(db, local.id)).toEqual(before);
     expect(await db.matches.get(local.id)).toEqual(local);
+  });
+
+  describe("a team match", () => {
+    const XI = ["p-Ali", "p-Usman", "p-Bench", "p-Ghost"];
+    const FIXTURE_ID = "44444444-4444-4444-8444-444444444444";
+
+    function teamRow(rules: Rules, overrides: Partial<OwnerRow> = {}): OwnerRow {
+      return {
+        ...ownerRow(rules),
+        team_id: TEAM_ID,
+        team_side: "A",
+        fixture_id: FIXTURE_ID,
+        player_stats: { xi: XI },
+        ...overrides,
+      };
+    }
+
+    it("gives a match with no team link no team", async () => {
+      const db = freshDb();
+      const match = serverMatch(3);
+      const matchId = crypto.randomUUID();
+      const { client } = serverFor(match.events, match.state.rules);
+
+      await takeOverScoring(client, db, matchId);
+
+      expect((await db.matches.get(matchId))?.team).toBeUndefined();
+    });
+
+    it("restores the team link with the XI named from the match, then the cached squad", async () => {
+      const db = freshDb();
+      await cacheTeam(db, cachedTeam({ squad: [squadPlayer("Bench", { id: "p-Bench" }), squadPlayer("Other")] }));
+      const match = serverMatch(3);
+      const matchId = crypto.randomUUID();
+      const { client } = serverFor(match.events, match.state.rules, {}, teamRow(match.state.rules));
+
+      await takeOverScoring(client, db, matchId);
+
+      expect((await db.matches.get(matchId))?.team).toEqual({
+        id: TEAM_ID,
+        side: "A",
+        fixtureId: FIXTURE_ID,
+        xi: [
+          { id: "p-Ali", name: "Ali" },
+          { id: "p-Usman", name: "Usman" },
+          { id: "p-Bench", name: "Bench" },
+          { id: "p-Ghost", name: "" },
+        ],
+      });
+    });
+
+    it("prefers the name the match gave a player over the cached squad's", async () => {
+      const db = freshDb();
+      await cacheTeam(db, cachedTeam({ squad: [squadPlayer("Ali Khan", { id: "p-Ali" })] }));
+      const match = serverMatch(3);
+      const matchId = crypto.randomUUID();
+      const { client } = serverFor(match.events, match.state.rules, {}, teamRow(match.state.rules));
+
+      await takeOverScoring(client, db, matchId);
+
+      expect((await db.matches.get(matchId))?.team?.xi[0]).toEqual({ id: "p-Ali", name: "Ali" });
+    });
+
+    it("ignores a cached squad that belongs to another team", async () => {
+      const db = freshDb();
+      await cacheTeam(db, cachedTeam({ id: "99999999-9999-4999-8999-999999999999", squad: [squadPlayer("Bench", { id: "p-Bench" })] }));
+      const match = serverMatch(3);
+      const matchId = crypto.randomUUID();
+      const { client } = serverFor(match.events, match.state.rules, {}, teamRow(match.state.rules));
+
+      await takeOverScoring(client, db, matchId);
+
+      expect((await db.matches.get(matchId))?.team?.xi[2]).toEqual({ id: "p-Bench", name: "" });
+    });
+
+    it("works without a cached team", async () => {
+      const db = freshDb();
+      const match = serverMatch(3);
+      const matchId = crypto.randomUUID();
+      const row = teamRow(match.state.rules, { team_side: "B", fixture_id: null, player_stats: { xi: ["p-Hamza"] } });
+      const { client } = serverFor(match.events, match.state.rules, {}, row);
+
+      await takeOverScoring(client, db, matchId);
+
+      expect((await db.matches.get(matchId))?.team).toEqual({
+        id: TEAM_ID,
+        side: "B",
+        fixtureId: null,
+        xi: [{ id: "p-Hamza", name: "Hamza" }],
+      });
+    });
+
+    it("keeps the link, with an empty XI, when the server holds no record", async () => {
+      const db = freshDb();
+      const match = serverMatch(3);
+      const matchId = crypto.randomUUID();
+      const { client } = serverFor(match.events, match.state.rules, {}, teamRow(match.state.rules, { player_stats: null }));
+
+      await takeOverScoring(client, db, matchId);
+
+      expect((await db.matches.get(matchId))?.team).toEqual({ id: TEAM_ID, side: "A", fixtureId: FIXTURE_ID, xi: [] });
+    });
+
+    it("skips XI entries that are not player ids", async () => {
+      const db = freshDb();
+      const match = serverMatch(3);
+      const matchId = crypto.randomUUID();
+      const row = teamRow(match.state.rules, { player_stats: { xi: ["p-Ali", 7, null] } });
+      const { client } = serverFor(match.events, match.state.rules, {}, row);
+
+      await takeOverScoring(client, db, matchId);
+
+      expect((await db.matches.get(matchId))?.team?.xi).toEqual([{ id: "p-Ali", name: "Ali" }]);
+    });
+
+    it("keeps updating the server's player stats on later pushes", async () => {
+      const db = freshDb();
+      const match = serverMatch(3);
+      const matchId = crypto.randomUUID();
+      const { client } = serverFor(match.events, match.state.rules, {}, teamRow(match.state.rules));
+      await takeOverScoring(client, db, matchId);
+      await appendEvents(db, matchId, [deliveryDraft(replay(await loadEvents(db, matchId)), { runs: 1 })]);
+      const calls: Array<Parameters<PushFn>[0]> = [];
+      const push: PushFn = async (args) => {
+        calls.push(args);
+        return { ok: true, lastSeq: args.events.at(-1)?.seq ?? 0 };
+      };
+
+      await syncMatch(db, matchId, push);
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0].match.team).toMatchObject({ id: TEAM_ID, side: "A", fixtureId: FIXTURE_ID });
+      expect(calls[0].match.team?.record.xi).toEqual(XI);
+    });
+
+    it("keeps the team link when late events are appended", async () => {
+      const db = freshDb();
+      const match = serverMatch(8);
+      const matchId = crypto.randomUUID();
+      const snapshot = match.events.slice(0, 10);
+      let landed = false;
+      const { client } = serverFor(
+        snapshot,
+        match.state.rules,
+        {
+          get_owner_events: (args) => {
+            const after = args.p_after as number;
+            const visible = landed ? match.events : snapshot;
+            landed = true;
+            return { data: visible.filter((event) => event.seq > after), error: null };
+          },
+        },
+        teamRow(match.state.rules),
+      );
+
+      await takeOverScoring(client, db, matchId);
+
+      const local = await db.matches.get(matchId);
+      expect(local?.lastSeq).toBe(match.events.length);
+      expect(local?.team).toMatchObject({ id: TEAM_ID, side: "A", fixtureId: FIXTURE_ID });
+    });
   });
 });
