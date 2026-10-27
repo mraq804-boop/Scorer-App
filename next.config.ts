@@ -35,6 +35,7 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/m/*/card": ["src/assets/fonts/**"],
     "/m/*/opengraph-image": ["src/assets/fonts/**"],
+    "/t/*/opengraph-image": ["src/assets/fonts/**"],
   },
   turbopack: {
     rules: {
