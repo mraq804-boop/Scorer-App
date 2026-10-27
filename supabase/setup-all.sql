@@ -340,14 +340,14 @@ create table public.team_invites (
 create index team_invites_team_idx on public.team_invites (team_id);
 
 create table public.squad_players (
-  id uuid primary key,
   team_id uuid not null references public.teams on delete cascade,
+  id uuid not null,
   name text not null check (char_length(name) between 1 and 40),
   role text check (role in ('batter', 'bowler', 'allrounder', 'keeper')),
   active boolean not null default true,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  primary key (team_id, id)
 );
-create index squad_players_team_idx on public.squad_players (team_id);
 
 create table public.seasons (
   id uuid primary key,
@@ -505,12 +505,13 @@ begin
   if is_owner is null then
     raise exception 'not_team_owner';
   end if;
-  insert into public.squad_players as s (id, team_id, name, role, active)
-  select x.id, p_team, x.name, x.role, coalesce(x.active, true)
-  from jsonb_to_recordset(p_players) as x(id uuid, name text, role text, active boolean)
-  on conflict (id) do update set name = excluded.name, role = excluded.role, active = excluded.active
+  insert into public.squad_players as s (team_id, id, name, role, active)
+  select distinct on (x.id) p_team, x.id, x.name, x.role, coalesce(x.active, true)
+  from rows from (jsonb_to_recordset(p_players) as (id uuid, name text, role text, active boolean))
+    with ordinality as x(id, name, role, active, n)
+  order by x.id, x.n desc
+  on conflict (team_id, id) do update set name = excluded.name, role = excluded.role, active = excluded.active
   where is_owner
-    and s.team_id = excluded.team_id
     and (s.name, s.role, s.active) is distinct from (excluded.name, excluded.role, excluded.active);
   get diagnostics written = row_count;
   if (select count(*) from public.squad_players p where p.team_id = p_team) > max_squad then
@@ -738,7 +739,9 @@ declare
   ev record;
   malformed boolean;
   top_seq int;
+  max_record_bytes constant int := 16384;
   team_ref jsonb := p_match -> 'team';
+  prev_team uuid;
 begin
   if uid is null then
     raise exception 'not_signed_in';
@@ -804,6 +807,7 @@ begin
     m.last_seq := ev.seq;
   end loop;
 
+  prev_team := m.team_id;
   if jsonb_typeof(team_ref) = 'object' then
     begin
       m.team_id := (team_ref ->> 'id')::uuid;
@@ -813,7 +817,10 @@ begin
     end;
     if m.team_id is not null and team_ref ->> 'side' in ('A', 'B') and m.team_id in (select public.my_team_ids()) then
       m.team_side := team_ref ->> 'side';
-      m.player_stats := case when jsonb_typeof(team_ref -> 'record') = 'object' then team_ref -> 'record' end;
+      m.player_stats := case
+        when jsonb_typeof(team_ref -> 'record') = 'object'
+             and octet_length((team_ref -> 'record')::text) <= max_record_bytes then team_ref -> 'record'
+      end;
       update public.fixtures f set status = 'played', match_id = mid
       where f.id = m.fixture_id and f.team_id = m.team_id;
       if not found then
@@ -826,10 +833,15 @@ begin
       m.player_stats := null;
     end if;
   end if;
+  if m.team_id is distinct from prev_team then
+    m.potm_player_id := null;
+    m.result_override := null;
+  end if;
 
   update public.matches
   set status = p_match ->> 'status', summary = coalesce(p_match -> 'summary', '{}'), last_seq = m.last_seq, updated_at = now(),
-      team_id = m.team_id, team_side = m.team_side, fixture_id = m.fixture_id, player_stats = m.player_stats
+      team_id = m.team_id, team_side = m.team_side, fixture_id = m.fixture_id, player_stats = m.player_stats,
+      potm_player_id = m.potm_player_id, result_override = m.result_override
   where id = mid;
   return m.last_seq;
 end $$;

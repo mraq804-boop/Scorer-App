@@ -300,12 +300,25 @@ describe("squad", () => {
 
     await expectDbError(upsertSquad(STRANGER, lions.id, [{ ...hamza, id: crypto.randomUUID() }]), /not_team_owner/);
     await expectDbError(upsertSquad(GUEST, lions.id, [{ ...hamza, id: crypto.randomUUID() }]), /not_team_owner/);
-    expect(await upsertSquad(OTHER_OWNER, eagles.id, [{ ...ali, name: "Stolen" }])).toBe(0);
-    expect(await rows(`select team_id, name from public.squad_players where id = $1`, [ali.id])).toEqual([
+    expect(await upsertSquad(OTHER_OWNER, eagles.id, [{ ...ali, name: "Same id" }])).toBe(1);
+    expect(await rows(`select team_id, name from public.squad_players where id = $1 order by name`, [ali.id])).toEqual([
       { team_id: lions.id, name: "Ali Khan" },
+      { team_id: eagles.id, name: "Same id" },
     ]);
+    expect((await teamPage(lions.code))?.squad).toContainEqual({ ...ali, name: "Ali Khan" });
+    expect((await teamPage(eagles.code))?.squad).toEqual([{ ...ali, name: "Same id" }]);
     await expectDbError(upsertSquad(OWNER, lions.id, [{ ...hamza, id: crypto.randomUUID(), name: "n".repeat(41) }]), /squad_players_name_check/);
     await expectDbError(upsertSquad(OWNER, lions.id, [{ ...hamza, id: crypto.randomUUID(), role: "captain" }]), /squad_players_role_check/);
+  });
+
+  it("keeps the last entry when a batch repeats an id", async () => {
+    const id = crypto.randomUUID();
+    const first = { id, name: "First", role: null, active: true };
+    const last = { id, name: "Last", role: "keeper", active: false };
+    expect(await upsertSquad(OTHER_OWNER, eagles.id, [first, last])).toBe(1);
+    expect(await rows(`select id, name, role, active from public.squad_players where team_id = $1 and id = $2`, [eagles.id, id])).toEqual([
+      last,
+    ]);
   });
 
   it("caps the squad at 60 players", async () => {
@@ -432,10 +445,11 @@ describe("team matches", () => {
     expect(await matchRow(malformed.id)).toMatchObject({ team_id: null, last_seq: 2 });
   });
 
-  it("caps the record size", async () => {
+  it("a record over 16384 bytes is dropped but the match still syncs, linked", async () => {
     const match = newMatch();
-    await expectDbError(push(OWNER, match, [1], { ...link(lions), record: { note: "x".repeat(16400) } }), /matches_player_stats_size/);
-    expect(await rows(`select 1 from public.matches where id = $1`, [match.id])).toHaveLength(0);
+    expect(await push(OWNER, match, [1, 2], { ...link(lions), record: { note: "x".repeat(16400) } })).toBe(2);
+    expect(await matchRow(match.id)).toMatchObject({ team_id: lions.id, team_side: "A", player_stats: null, last_seq: 2 });
+    expect(await rows(`select 1 from public.match_events where match_id = $1`, [match.id])).toHaveLength(2);
   });
 });
 
@@ -473,6 +487,26 @@ describe("match outcomes", () => {
     const unlinked = newMatch();
     await push(OWNER, unlinked, [1]);
     await expectDbError(call(OWNER, "set_result_override", [unlinked.code, true]), /not_team_owner/);
+  });
+
+  it("moving a match to another team clears its Player of the match and No result", async () => {
+    await acceptInvite(OTHER_OWNER, await createInvite(OWNER));
+    const moved = newMatch();
+    const xi = [crypto.randomUUID(), crypto.randomUUID()];
+    await push(OTHER_OWNER, moved, [1], link(eagles, null, xi));
+    await call(OTHER_OWNER, "set_potm", [moved.code, xi[0]]);
+    await call(OTHER_OWNER, "set_result_override", [moved.code, true]);
+
+    expect(await push(OTHER_OWNER, moved, [2], link(eagles, null, xi))).toBe(2);
+    expect(await matchRow(moved.id)).toMatchObject({ team_id: eagles.id, potm_player_id: xi[0], result_override: "no_result" });
+
+    expect(await push(OTHER_OWNER, moved, [3], link(lions, null, xi))).toBe(3);
+    expect(await matchRow(moved.id)).toMatchObject({ team_id: lions.id, potm_player_id: null, result_override: null });
+
+    await call(OWNER, "set_potm", [moved.code, xi[1]]);
+    await call(OWNER, "remove_scorer", [OTHER_OWNER.sub]);
+    expect(await push(OTHER_OWNER, moved, [4], link(lions, null, xi))).toBe(4);
+    expect(await matchRow(moved.id)).toMatchObject({ team_id: null, potm_player_id: null, result_override: null });
   });
 });
 
