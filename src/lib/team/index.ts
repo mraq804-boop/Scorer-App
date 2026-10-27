@@ -15,6 +15,7 @@ export {
   matchPoints,
 } from "./points";
 export { seasonOf } from "./seasons";
+export { parseTeamPage } from "./page-data";
 export {
   LEADERBOARD_SIZE,
   MIN_BALLS_FOR_STRIKE_RATE,

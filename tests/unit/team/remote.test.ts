@@ -7,6 +7,8 @@ import {
   acceptScorerInvite,
   createScorerInvite,
   createTeam,
+  fetchScorers,
+  fetchTeamPage,
   fetchMyTeam,
   refreshTeamCache,
   refreshTeamCacheInBackground,
@@ -354,6 +356,35 @@ describe("team calls", () => {
 
     expect(await removeScorer(client, "user-1")).toEqual({ ok: true, value: undefined });
     expect(rpc).toHaveBeenCalledWith("remove_scorer", { p_user: "user-1" });
+  });
+
+  it("fetchScorers reads the owner's scorer list from get_my_team", async () => {
+    const scorers = [{ userId: "user-2", addedAt: "2026-10-27T08:00:00.000Z" }];
+    const { client, rpc } = clientWith(() => ok({ ...myTeamJson(), scorers: [...scorers, { userId: 7 }] }));
+
+    expect(await fetchScorers(client)).toEqual({ ok: true, value: scorers });
+    expect(rpc).toHaveBeenCalledWith("get_my_team", undefined);
+  });
+
+  it("fetchScorers is empty for a scorer, who gets no list", async () => {
+    const { client } = clientWith(() => ok({ ...myTeamJson(), role: "scorer" }));
+
+    expect(await fetchScorers(client)).toEqual({ ok: true, value: [] });
+  });
+
+  it("fetchTeamPage reads the public page by team code", async () => {
+    const { client, rpc } = clientWith(() =>
+      ok({ team: { code: "abcd2345", name: "Lions", homeGround: null, timeZone: "Asia/Karachi" }, squad: [], seasons: [], fixtures: [], matches: [] }),
+    );
+
+    expect(await fetchTeamPage(client, "abcd2345")).toMatchObject({ ok: true, value: { team: { name: "Lions" }, matches: [] } });
+    expect(rpc).toHaveBeenCalledWith("get_team_page", { p_code: "abcd2345" });
+  });
+
+  it("fetchTeamPage treats a missing team as unknown", async () => {
+    const { client } = clientWith(() => ok(null));
+
+    expect(await fetchTeamPage(client, "abcd2345")).toEqual({ ok: false, error: "unknown" });
   });
 
   it("upsertSquadPlayers sends the team and players and returns the number written", async () => {

@@ -10,7 +10,8 @@ import {
   getSquadOutboxByTeam,
   removeFromSquadOutbox,
 } from "./local";
-import type { Season, SquadPlayer } from "./types";
+import { parseTeamPage } from "./page-data";
+import type { Season, SquadPlayer, TeamPageData } from "./types";
 
 export type TeamError =
   | "network"
@@ -28,6 +29,7 @@ export type TeamResult<T> = { ok: true; value: T } | { ok: false; error: TeamErr
 
 export type NewTeam = { name: string; homeGround: string | null; timeZone: string };
 export type FixtureInput = Omit<CachedFixture, "matchCode">;
+export type Scorer = { userId: string; addedAt: string };
 
 export class TeamRemoteError extends Error {
   readonly code: TeamError;
@@ -154,6 +156,27 @@ export async function refreshTeamCache(client: SupabaseClient, db: LocalDb): Pro
 export async function refreshTeamCacheInBackground(client: SupabaseClient, db: LocalDb): Promise<void> {
   if ((await sessionKind(client)) !== "member") return;
   await refreshTeamCache(client, db).catch(() => undefined);
+}
+
+function readScorers(data: unknown): { value: Scorer[] } | undefined {
+  if (!isObject(data)) return undefined;
+  const scorers = Array.isArray(data.scorers) ? data.scorers : [];
+  return {
+    value: scorers.filter(
+      (scorer): scorer is Scorer => isObject(scorer) && typeof scorer.userId === "string" && typeof scorer.addedAt === "string",
+    ),
+  };
+}
+
+export function fetchScorers(client: SupabaseClient): Promise<TeamResult<Scorer[]>> {
+  return call(client, "get_my_team", undefined, readScorers);
+}
+
+export function fetchTeamPage(client: SupabaseClient, code: string): Promise<TeamResult<TeamPageData>> {
+  return call(client, "get_team_page", { p_code: code }, (data) => {
+    const page = parseTeamPage(data);
+    return page === null ? undefined : { value: page };
+  });
 }
 
 export function createTeam(client: SupabaseClient, input: NewTeam): Promise<TeamResult<string>> {

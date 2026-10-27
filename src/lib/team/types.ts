@@ -77,3 +77,21 @@ export type TeamStats = {
   leaderboards: Record<LeaderboardKey, LeaderboardRow[]>;
   potm: Record<string, { playerId: string; suggested: boolean } | null>;
 };
+export type Fixture = {
+  id: string;
+  startsAt: string;
+  opponent: string;
+  ground: string | null;
+  homeAway: "home" | "away" | null;
+  overs: number | null;
+  status: "scheduled" | "played" | "cancelled";
+  matchCode: string | null;
+};
+export type TeamPageMatch = TeamMatch & { title: string; lines: string[]; result: string | null };
+export type TeamPageData = {
+  team: { code: string; name: string; homeGround: string | null; timeZone: string };
+  squad: SquadPlayer[];
+  seasons: Season[];
+  fixtures: Fixture[];
+  matches: TeamPageMatch[];
+};

@@ -8,7 +8,7 @@ export async function startGoogleSignIn(
   client: SupabaseClient,
   db: LocalDb,
   origin: string,
-  next: "/account" | "/team" = "/account",
+  next: "/account" | "/team" | `/team/join?token=${string}` = "/account",
 ): Promise<void> {
   const { data, error: sessionError } = await client.auth.getSession();
   if (sessionError !== null) throw sessionError;

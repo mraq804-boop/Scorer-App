@@ -1,17 +1,20 @@
 "use client";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ChevronLeft, LoaderCircle, LogIn } from "lucide-react";
+import { ChevronLeft, LoaderCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { CreateTeam } from "@/components/team/create-team";
+import { FixturesEditor } from "@/components/team/fixtures-editor";
 import { FormAlert } from "@/components/team/form";
+import { MatchOutcomes } from "@/components/team/match-outcomes";
+import { ScorersEditor } from "@/components/team/scorers-editor";
 import { SeasonsEditor } from "@/components/team/seasons-editor";
+import { SignInCard } from "@/components/team/sign-in-card";
 import { ShareLink } from "@/components/team/share-link";
 import { SquadEditor } from "@/components/team/squad-editor";
 import { Button } from "@/components/ui/button";
 import { t } from "@/lib/i18n";
-import { startGoogleSignIn } from "@/lib/identity/google";
 import { getLocalDb } from "@/lib/local/db";
 import type { CachedTeam } from "@/lib/local/db";
 import { teamUrl } from "@/lib/site-url";
@@ -38,37 +41,6 @@ async function loadView(client: SupabaseClient): Promise<View> {
   }
 }
 
-function SignInPrompt({ client }: { client: SupabaseClient }) {
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
-
-  const signIn = async () => {
-    setBusy(true);
-    setFailed(false);
-    try {
-      await startGoogleSignIn(client, getLocalDb(), window.location.origin, "/team");
-    } catch {
-      setFailed(true);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <section className="flex flex-col gap-4 rounded-2xl border bg-card p-5">
-      <div className="flex flex-col gap-1.5">
-        <h2 className="text-xl font-bold">{t("team.guest.title")}</h2>
-        <p className="text-sm text-muted-foreground">{t("team.guest.body")}</p>
-      </div>
-      {failed && <FormAlert message={t("account.signInFailed")} />}
-      <Button disabled={busy} onClick={() => void signIn()} className="h-14 w-full rounded-2xl text-base font-semibold">
-        {busy ? <LoaderCircle className="size-5 animate-spin" aria-hidden /> : <LogIn className="size-5" aria-hidden />}
-        {t("account.signIn")}
-      </Button>
-    </section>
-  );
-}
-
 function TeamHeader({ team }: { team: CachedTeam }) {
   return (
     <section className="flex flex-col gap-1">
@@ -93,7 +65,7 @@ function PublicLink({ team }: { team: CachedTeam }) {
         <h2 className="text-lg font-bold">{t("team.link.title")}</h2>
         <p className="text-sm text-muted-foreground">{t("team.link.body")}</p>
       </div>
-      <ShareLink url={url} text={t("team.link.shareText", { name: team.name, url })} />
+      <ShareLink url={url} text={t("team.link.shareText", { name: team.name, url })} testId="team-link" />
     </section>
   );
 }
@@ -134,7 +106,7 @@ function TeamContent() {
         </p>
       );
     case "guest":
-      return <SignInPrompt client={view.client} />;
+      return <SignInCard client={view.client} title={t("team.guest.title")} body={t("team.guest.body")} next="/team" />;
     case "failed":
       return (
         <div className="flex flex-col gap-3">
@@ -147,13 +119,18 @@ function TeamContent() {
     case "none":
       return <CreateTeam client={view.client} onCreated={() => refresh(view.client)} />;
     case "team": {
-      const onChanged = () => refresh(view.client);
+      const { client, team } = view;
+      const onChanged = () => refresh(client);
+      const owner = team.role === "owner";
       return (
         <>
-          <TeamHeader team={view.team} />
-          {view.team.role === "owner" && <PublicLink team={view.team} />}
-          <SquadEditor client={view.client} team={view.team} onChanged={onChanged} />
-          {view.team.role === "owner" && <SeasonsEditor client={view.client} team={view.team} onChanged={onChanged} />}
+          <TeamHeader team={team} />
+          {owner && <PublicLink team={team} />}
+          <FixturesEditor client={client} team={team} onChanged={onChanged} />
+          {owner && <MatchOutcomes client={client} team={team} />}
+          <SquadEditor client={client} team={team} onChanged={onChanged} />
+          {owner && <SeasonsEditor client={client} team={team} onChanged={onChanged} />}
+          {owner && <ScorersEditor client={client} team={team} />}
         </>
       );
     }

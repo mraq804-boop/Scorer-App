@@ -11,3 +11,7 @@ export function matchUrl(code: string): string {
 export function teamUrl(code: string): string {
   return `${siteUrl()}/t/${code}`;
 }
+
+export function inviteUrl(token: string): string {
+  return `${siteUrl()}/team/join?token=${encodeURIComponent(token)}`;
+}

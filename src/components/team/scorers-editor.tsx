@@ -1,0 +1,167 @@
+"use client";
+
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { LoaderCircle, UserPlus } from "lucide-react";
+import { useEffect, useId, useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { t } from "@/lib/i18n";
+import type { CachedTeam } from "@/lib/local/db";
+import { inviteUrl } from "@/lib/site-url";
+import { createScorerInvite, fetchScorers, removeScorer } from "@/lib/team/remote";
+import type { Scorer } from "@/lib/team/remote";
+import { FormAlert, teamErrorMessage } from "./form";
+import { ShareLink } from "./share-link";
+
+type ScorersEditorProps = { client: SupabaseClient; team: CachedTeam };
+
+type Load = { kind: "loading" } | { kind: "failed" } | { kind: "ready"; scorers: Scorer[] };
+
+const dayFormat = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric" });
+
+type RemoveDialogProps = { client: SupabaseClient; scorer: Scorer; onRemoved: () => Promise<void>; onClose: () => void };
+
+function RemoveDialog({ client, scorer, onRemoved, onClose }: RemoveDialogProps) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  const confirm = async () => {
+    setBusy(true);
+    setError(undefined);
+    const result = await removeScorer(client, scorer.userId);
+    if (!result.ok) {
+      setError(teamErrorMessage(result.error));
+      setBusy(false);
+      return;
+    }
+    await onRemoved();
+    onClose();
+  };
+
+  return (
+    <AlertDialog open onOpenChange={(open) => !open && !busy && onClose()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="text-lg font-bold">{t("team.scorers.removeTitle")}</AlertDialogTitle>
+          <AlertDialogDescription>{t("team.scorers.removeBody")}</AlertDialogDescription>
+        </AlertDialogHeader>
+        {error !== undefined && <FormAlert message={error} />}
+        <div className="flex flex-col gap-2">
+          <Button
+            variant="destructive"
+            disabled={busy}
+            onClick={() => void confirm()}
+            className="h-12 rounded-xl text-base font-semibold"
+          >
+            {busy && <LoaderCircle className="size-5 animate-spin" aria-hidden />}
+            {t("team.scorers.remove")}
+          </Button>
+          <AlertDialogCancel disabled={busy} className="h-12 rounded-xl text-base font-semibold">
+            {t("common.cancel")}
+          </AlertDialogCancel>
+        </div>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+export function ScorersEditor({ client, team }: ScorersEditorProps) {
+  const headingId = useId();
+  const [load, setLoad] = useState<Load>({ kind: "loading" });
+  const [invite, setInvite] = useState<string | null>(null);
+  const [inviteError, setInviteError] = useState<string | undefined>(undefined);
+  const [inviting, setInviting] = useState(false);
+  const [removing, setRemoving] = useState<Scorer | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void fetchScorers(client).then((result) => {
+      if (active) setLoad(result.ok ? { kind: "ready", scorers: result.value } : { kind: "failed" });
+    });
+    return () => {
+      active = false;
+    };
+  }, [client]);
+
+  const reload = async () => {
+    const result = await fetchScorers(client);
+    setLoad(result.ok ? { kind: "ready", scorers: result.value } : { kind: "failed" });
+  };
+
+  const createInvite = async () => {
+    setInviting(true);
+    setInviteError(undefined);
+    try {
+      const result = await createScorerInvite(client);
+      if (result.ok) setInvite(inviteUrl(result.value));
+      else setInviteError(teamErrorMessage(result.error, t("team.error.scorersFull")));
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  return (
+    <section aria-labelledby={headingId} className="flex flex-col gap-3">
+      <div className="flex flex-col gap-0.5">
+        <h2 id={headingId} className="text-lg font-bold">
+          {t("team.scorers.title")}
+        </h2>
+        <p className="text-sm text-muted-foreground">{t("team.scorers.body")}</p>
+      </div>
+      {load.kind === "loading" && <p className="text-sm text-muted-foreground">{t("team.loading")}</p>}
+      {load.kind === "failed" && <FormAlert message={t("team.scorers.loadFailed")} />}
+      {load.kind === "ready" && load.scorers.length === 0 && (
+        <p className="text-sm text-muted-foreground">{t("team.scorers.empty")}</p>
+      )}
+      {load.kind === "ready" && load.scorers.length > 0 && (
+        <ul className="flex flex-col gap-1.5">
+          {load.scorers.map((scorer) => {
+            const date = dayFormat.format(new Date(scorer.addedAt));
+            return (
+              <li key={scorer.userId} className="flex min-h-14 items-center gap-3 rounded-xl border bg-card px-3.5 py-2">
+                <span className="num min-w-0 flex-1 truncate">{t("team.scorers.added", { date })}</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  aria-label={t("team.scorers.removeLabel", { date })}
+                  onClick={() => setRemoving(scorer)}
+                  className="h-11 rounded-xl px-4 text-base"
+                >
+                  {t("team.scorers.remove")}
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {invite === null ? (
+        <Button
+          type="button"
+          variant="outline"
+          disabled={inviting}
+          onClick={() => void createInvite()}
+          className="h-12 rounded-xl text-base"
+        >
+          {inviting ? <LoaderCircle className="size-5 animate-spin" aria-hidden /> : <UserPlus className="size-5" aria-hidden />}
+          {t("team.scorers.invite")}
+        </Button>
+      ) : (
+        <div className="flex flex-col gap-2 rounded-2xl border border-dashed p-3">
+          <ShareLink url={invite} text={t("team.scorers.shareText", { name: team.name, url: invite })} testId="invite-link" />
+          <p className="text-sm text-muted-foreground">{t("team.scorers.inviteHint")}</p>
+        </div>
+      )}
+      {inviteError !== undefined && <FormAlert message={inviteError} />}
+      {removing !== null && (
+        <RemoveDialog client={client} scorer={removing} onRemoved={reload} onClose={() => setRemoving(null)} />
+      )}
+    </section>
+  );
+}

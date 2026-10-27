@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { t } from "@/lib/i18n";
 
-export function ShareLink({ url, text }: { url: string; text: string }) {
+export function ShareLink({ url, text, testId }: { url: string; text: string; testId?: string }) {
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
 
   const copy = async () => {
@@ -19,7 +19,7 @@ export function ShareLink({ url, text }: { url: string; text: string }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <p dir="ltr" className="truncate rounded-xl bg-muted px-3.5 py-3 font-mono text-sm select-all" data-testid="team-link">
+      <p dir="ltr" className="truncate rounded-xl bg-muted px-3.5 py-3 font-mono text-sm select-all" data-testid={testId}>
         {url}
       </p>
       <div className="flex flex-col gap-2">
