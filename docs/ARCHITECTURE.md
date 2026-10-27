@@ -25,7 +25,7 @@ Viewer (/m/<code>, no sign-in)
 - **The phone is the source of truth while scoring.** A ball is shown only after its IndexedDB transaction commits. `appendEvents` assigns `seq` inside that transaction, so values are unique and gap-free per match even with two tabs open.
 - **The outbox is the unsynced tail** of the events table: events with `seq` above the match's `syncedSeq`. There is no second queue. The loop runs after every ball, on `online`, when the page becomes visible, and on a retry timer (2 s, doubling to 60 s). It pushes batches of 50. After a network failure the next batch for that match is halved (never below 10), and a successful push brings it back to 50, so a backlog still moves on a slow 2G link. Every Supabase request from the phone gives up after 20 s plus 1 s per KB of request body, so a hung push counts as a network error and its balls stay pending. A call that sets its own signal is not given that limit: take-over downloads allow 120 s per page of 1000 events. A failed push is sorted by whether retrying can help. A request that never completed, a timeout (408), 429 and any 5xx (gateway errors, a schema cache reload) are network errors, and 401 (expired token, no session) is "not signed in"; both retry on the loop's backoff. Only a refusal the server would repeat (`invalid_event`, `too_many_events`, `quota_exceeded` or a constraint violation, status 400 or 409) holds that match back for 15 minutes between tries while other matches keep syncing. Any other unexpected error retries on the loop's backoff too. Balls are never dropped or changed. The RPC returns the server's last `seq`, the phone stores it as `syncedSeq`, and the chip says "Synced" when `syncedSeq` equals `lastSeq`, "Saved on phone" otherwise.
 - **Match code.** Eight characters from `abcdefghjkmnpqrstuvwxyz23456789`, made on the phone. On a collision (`code_taken`) the phone makes a new one once and retries.
-- **Local store.** Dexie database `cricket-scorer`: `matches`, `events` (key `[matchId+seq]`) and `meta` (device id, pending claim, orphaned balls).
+- **Local store.** Dexie database `cricket-scorer`, version 2: `matches`, `events` (key `[matchId+seq]`), `meta` (device id, pending claim, orphaned balls), `team` (the cached team: squad, seasons, upcoming fixtures and this account's role) and `squadOutbox` (squad players added on the phone and not yet uploaded).
 
 ## Events
 Twelve types. Every event also carries `id` (client UUID), `seq` and `at`.
@@ -35,7 +35,7 @@ Twelve types. Every event also carries `id` (client UUID), `seq` and `at`.
 | `match_created` | `title`, `teams` (A, B names), `rules`, `toss` (winner, bat or bowl) |
 | `player_added` | `player` (id, name, team) |
 | `innings_started` | `innings` (1 or 2), `battingTeam`, `striker`, `nonStriker`, `bowler` |
-| `delivery` | `striker`, `nonStriker`, `bowler`, `kind` (legal, wide, noball), `runs`, `runsAs` (bat, bye, legbye), `boundary`, `penalty`, `wicket` |
+| `delivery` | `striker`, `nonStriker`, `bowler`, `kind` (legal, wide, noball), `runs`, `runsAs` (bat, bye, legbye), `boundary`, `penalty`, `wicket` (`kind`, `playerOut`, `fielderName`, and an optional `fielderId` when the fielder is a squad player) |
 | `batter_in` | `player` |
 | `bowler_changed` | `player` |
 | `strike_swapped` | none |
@@ -48,7 +48,7 @@ Twelve types. Every event also carries `id` (client UUID), `seq` and `at`.
 Each delivery records who was on strike, at the other end and bowling. The scorer's record is the truth; the engine never recomputes past balls' players. Rules never block: they produce warnings and prompts.
 
 ## Wire shapes
-- **Push (client to server): nested.** `push_match_events(p_match, p_device, p_events)` takes events as `{ id, seq, at, type, payload }`, with every other field under `payload` (`toWire` in `src/lib/sync/wire.ts`). `p_match` is the header: `id`, `code`, `title`, `teamA`, `teamB`, `rules`, `status`, `summary`.
+- **Push (client to server): nested.** `push_match_events(p_match, p_device, p_events)` takes events as `{ id, seq, at, type, payload }`, with every other field under `payload` (`toWire` in `src/lib/sync/wire.ts`). `p_match` is the header: `id`, `code`, `title`, `teamA`, `teamB`, `rules`, `status`, `summary`, and for a team match a `team` block (`id`, `side`, `fixtureId`, `record`).
 - **Reads and broadcasts (server to client): flat.** `match_event_json` rebuilds `payload || { id, seq, at, type }`, the same shape as the in-app `MatchEvent`. `get_live_match`, `get_live_events`, `get_owner_events` and the Realtime trigger all use it, so the viewer and the take-over code use the events as they come.
 
 ## Security model
@@ -69,6 +69,7 @@ Each delivery records who was on strike, at the other end and bowling. The score
 ## Offline and PWA
 - **Precached shell.** The hand-written service worker (`src/app/sw.js/route.ts`, served uncached) precaches `/`, `/new`, `/score`, `/offline`, the manifest, the icons and every `/_next/static/` file those pages reference. A missing script or stylesheet fails the install, so a worker never goes live half-cached. Scoring screens are client-rendered pages with the match id in the query (`/score?m=<id>`), so the cache holds a fixed set of URLs.
 - **Fetch rules.** Same-origin GETs only. Static files and icons are cache-first. A navigation to a shell page is answered from the cache whatever its query. Any other navigation goes to the network and falls back to `/offline`. API calls, `/m/*` and `/account` are never cached.
+- **Team pages.** `/team` and `/team/join` are network-only like `/account`: no guest session, no sync loop, no worker. The public pages `/t/<code>` and `/t/<code>/p/<player>` are server-rendered, never sign in and never install the worker. An e2e check reads the build manifest to make sure their browser code holds no Dexie, supabase-js, Turnstile or scoring code.
 - **Per-page mounting.** `PwaRegister` is on `/`, `/new`, `/score` and `/offline`. `GuestSession` (anonymous sign-in plus the sync loop) is on `/`, `/new` and `/score`. When the loop finds no session and the phone is online it starts a sign-in, one at a time, so a failed first sign-in is retried on the loop's backoff, but never sooner than 60 s after the last failure (the `online` event tries again at once). `/account` is network-only: it has no guest session or sync loop. Live pages (`/m/*`, `/api/m/*`) never sign in and never install the worker, so spectators download little.
 - **Updates.** Cache names carry a version (`VERCEL_DEPLOYMENT_ID`). A new worker waits, a toast offers "Reload", and only then does it take over. `experimental.useOffline` makes Next retry failed navigations when the connection returns.
 - **Shell pages link to each other with plain `<a href>`** so those navigations are real loads the worker can answer. The scoring pages do not load code lazily, because lazy chunks are not precached.
@@ -80,23 +81,63 @@ Each delivery records who was on strike, at the other end and bowling. The score
 - Polling `/api/m/<code>/events?after=<seq>` is the fallback and the catch-up. It starts when the channel is not subscribed within 5 seconds, when a gap appears or when a fetch fails, and runs every `NEXT_PUBLIC_POLL_MS` while the page is visible. The viewer also fetches once every time the channel subscribes. That catch-up carries a unique `fresh` parameter so it skips the CDN, because a copy cached before the subscription could hide the last ball; the route ignores the parameter, and ordinary polls stay cacheable. The route returns up to 1000 events per call with `Cache-Control: public, s-maxage=<LIVE_CACHE_SECONDS>, stale-while-revalidate=10`, so the CDN absorbs most of the load.
 - **Share images.** `/m/<code>/card` (1080 by 1350, shared as a file) and `/m/<code>/opengraph-image` (1200 by 630, the WhatsApp preview) are drawn on the server by `next/og` from the synced events, with bundled Noto Sans and Noto Naskh Arabic fonts. On the scoring screen the share sheet first flushes the phone's outbox (up to 5 seconds), so the image is current.
 
+## Team page
+- **One team per owner.** The tables are:
+  - `teams`: code, name, home ground, time zone (default `Asia/Karachi`).
+  - `squad_players`: keyed by `(team_id, id)`; the id is made on the phone.
+  - `seasons`.
+  - `fixtures`: their `notes` are private.
+  - `team_scorers`.
+  - `team_invites`: hashed one-time tokens that expire after 7 days.
+
+  Creating a team and accepting an invite both need a Google account.
+- **Players are squad ids.** A team match uses each squad id as the player id in `player_added`, so the engine adds up runs and wickets by id unchanged. A wicket can carry `fielderId` for a catch, run-out or stumping by a squad player. Opponents stay typed names.
+- **Record flow.**
+  ```
+  /new ("My team is playing") ──▶ LocalMatch.team { id, side, fixtureId, xi }
+  scoring ──▶ events ──▶ push: matchRecord(state, side, xi, playedAt) ──▶ matches.player_stats
+  /t/<code> ──▶ get_team_page (cached 60 s) ──▶ aggregateTeamStats ──▶ record, leaderboards, player totals
+  ```
+  - The phone works out each player's figures for the match with the same engine (`matchRecord`). Every push sends that record with the header, like `summary`, and an edit to a past ball sends a new one.
+  - The public page adds up these small records (`aggregateTeamStats`) and never replays balls.
+  - Player of the match points are worked out on the page from the raw figures, so a change to the formula also applies to past matches.
+- **Squad outbox.** "Add to squad" at the ground writes the player to the cached team and to `squadOutbox`. The sync loop uploads the outbox with `upsert_squad_players` on its own backoff, separate from the balls, so a squad problem never holds up a match. A guest session never uploads, drops or clears team data.
+- **Which matches count.**
+  - Finished matches count as W, L or T.
+  - Matches the owner marks No result count as NR, and their figures still count.
+  - Matches in progress show as Live and count nowhere until they finish or are marked No result.
+  - A match counts in the season whose dates include the day it was played, in the team's time zone.
+- **RPCs.** All are security definer with `search_path = ''`, and `anon` and `authenticated` have no table writes.
+  - Owner only: `create_team`, `upsert_season`, `upsert_fixture`, `set_potm`, `set_result_override`, `create_scorer_invite`, `remove_scorer`.
+  - Owner or scorer: `upsert_squad_players` (a scorer can add players but not change them) and `get_my_team`.
+  - Google users: `accept_scorer_invite`.
+  - Anyone: `get_team_page(code)`. It returns the team, squad, seasons, fixtures without notes, and up to 500 link-visible team matches with their record, Player of the match and No result. It never returns events.
+- **`push_match_events` and teams.**
+  - A push with a `team` block links the match to that team when the caller owns the team or scores for it.
+  - A push from someone who is no longer a member, such as a removed scorer, still syncs, but the match isn't linked, so no ball is lost.
+  - A push without the block keeps the existing link.
+  - Linking a fixture marks it played.
+  - A record over 16 KB is stored as empty: the match still syncs, but its figures don't count.
+- **Limits per team:** 60 squad players, 300 fixtures, 30 seasons, 10 scorers and 5 open invites. Names can be up to 40 characters, grounds 60 and fixture notes 280.
+
 ## Folders
 | Path | What |
 |---|---|
 | `src/lib/scoring` | The pure engine: replay, undo and corrections, stats, prompts, rules (no DOM, no clock, no randomness) |
 | `src/lib/local`, `src/lib/sync` | IndexedDB store, outbox loop, wire format |
 | `src/lib/identity` | Guest session, Google sign-in and claim, take-over |
+| `src/lib/team` | Team logic: the per-match record, Player of the match points, seasons, totals and leaderboards (pure), plus the phone cache and outbox (`local.ts`), the RPC calls (`remote.ts`) and the public page parser (`page-data.ts`) |
 | `src/lib/live`, `src/lib/share`, `src/lib/i18n` | Viewer feed and merge, share text and summary, the message catalog |
-| `src/server` | Server-only code: live reads and image rendering |
-| `src/app` | Routes; `src/components` and `src/hooks` hold the UI |
-| `supabase/migrations` | Tables, RLS, RPCs and the Realtime trigger and policy |
+| `src/server` | Server-only code: live reads, the cached team page read (`team.ts`) and image rendering |
+| `src/app` | Routes; `src/components` and `src/hooks` hold the UI (`components/team` is the owner page, `components/team-page` the public page) |
+| `supabase/migrations` | Tables, RLS, RPCs and the Realtime trigger and policy; `supabase/setup-all.sql` is every migration in one file for a new project |
 
 ## Tests
 | Layer | Where | Command |
 |---|---|---|
-| Unit (vitest) | `tests/unit`: the engine (golden match, fast-check properties), local store on fake IndexedDB, sync loop, live feed and merge, identity, share text, the service worker script, route handlers | `npm test` |
+| Unit (vitest) | `tests/unit`: the engine (golden match, fast-check properties), local store on fake IndexedDB, sync loop, live feed and merge, identity, share text, the service worker script, route handlers, team records, stats and page sections, form validation | `npm test` |
 | Database (vitest + PGlite) | `tests/integration`: every migration on in-process Postgres with stand-ins for the Supabase auth and Realtime schemas, run as each kind of caller | `npm test` |
 | End to end (Playwright, desktop Edge and Pixel 7) | `tests/e2e`: the production build on port 3200 with placeholder Supabase values, and a stub for sync | `npx playwright test` |
-| End to end with a backend | The backend tests in `live.spec.ts` and `share.spec.ts`, and all of `offline-sync.spec.ts`, need a real development Supabase project in `.env.local` | `E2E_BACKEND=1 npx playwright test` |
+| End to end with a backend | The backend tests in `live.spec.ts` and `share.spec.ts`, all of `offline-sync.spec.ts`, and the team page render test in `team-page.spec.ts` (which also needs `E2E_TEAM_CODE`, a team made by hand) need a real development Supabase project in `.env.local` | `E2E_BACKEND=1 npx playwright test` |
 
 Backend specs are skipped unless `E2E_BACKEND=1`. The PGlite stand-in for Realtime only records the broadcast, so delivery and the Realtime policy are checked on a real project (see `docs/DEPLOYMENT.md`).

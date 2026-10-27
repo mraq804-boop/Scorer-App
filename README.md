@@ -4,11 +4,13 @@ Offline-first cricket scoring app for the phone. Score a match with no signal, t
 
 - Every ball is saved on the phone first, then synced to Supabase when a connection is available.
 - Anyone with the match link can follow the score live. Viewers never sign in.
+- A team owner keeps a squad, fixtures and seasons on `/team`. Matches scored for the team add up into a public team page (`/t/<code>`) with results, player stats and leaderboards.
 - Built with Next.js 16, Supabase and Vercel, as an installable PWA.
 
 ## Docs
 - [Design spec](docs/superpowers/specs/2026-10-23-score-and-share-design.md)
 - [Implementation plan](docs/superpowers/plans/2026-10-23-score-and-share.md)
+- [Team page spec](docs/superpowers/specs/2026-10-27-team-page-design.md) and [plan](docs/superpowers/plans/2026-10-27-team-page.md)
 - [Architecture](docs/ARCHITECTURE.md): event flow, wire shapes, security model, offline design, tests
 - [Deployment](docs/DEPLOYMENT.md): Supabase and Vercel setup, pre-launch and post-deploy checks, free-tier limits
 

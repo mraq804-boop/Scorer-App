@@ -13,7 +13,7 @@ Scores live on the scorer's phone first and sync to Supabase when there is signa
    - Check **Authentication → Rate Limits** for anonymous sign-ins. Mobile carriers share IP addresses, so a low per-IP limit can stop guests getting a session at a busy ground. They can still score; the balls sync once a session exists.
 4. **Authentication → URL Configuration:**
    - **Site URL:** `https://<domain>`
-   - **Redirect URLs:** `https://<domain>/**`, plus one `/**` entry for every other host people open the app on (for example `https://www.<domain>/**` when both the apex and `www` serve the app, and `https://<project>.vercel.app/**` if that address is shared). Google sign-in returns to the host the page was opened on, at `/auth/callback?next=/account`, so a host missing from this list sends people to the Site URL instead, still signed out. On the development project, add `http://localhost:3200/**`.
+   - **Redirect URLs:** `https://<domain>/**`, plus one `/**` entry for every other host people open the app on (for example `https://www.<domain>/**` when both the apex and `www` serve the app, and `https://<project>.vercel.app/**` if that address is shared). Google sign-in returns to the host the page was opened on, at `/auth/callback?next=/account` (or `next=/team`, or `next=/team/join?token=…` from a scorer invite). A host missing from this list sends people to the Site URL instead, still signed out. On the development project, add `http://localhost:3200/**`.
 5. **Realtime → Settings:** turn **off** "Allow public access". Live updates use private channels only, and viewers join them with the publishable key.
 6. **Apply the migrations** from this repo:
    ```bash
@@ -21,7 +21,9 @@ Scores live on the scorer's phone first and sync to Supabase when there is signa
    npx supabase link --project-ref <ref>
    npx supabase db push
    ```
-   This applies the four files in `supabase/migrations/`: tables and RLS, the RPCs, the Realtime trigger and topic policy, and the claim-token clean-up. Repeat `link` and `db push` for the other project.
+   This applies the five files in `supabase/migrations/`: tables and RLS, the RPCs, the Realtime trigger and topic policy, the claim-token clean-up, and the team page (`20261027000005_teams.sql`). Repeat `link` and `db push` for the other project.
+   - **Without the CLI:** on a new project, paste all of `supabase/setup-all.sql` into **SQL Editor** and run it once. On a project that already runs the launch, run only `supabase/migrations/20261027000005_teams.sql` there.
+   - **Order:** apply the team migration **before** deploying the app that includes the team page. Taking over scoring reads the new `matches` columns and fails against an older database, and the team pages need the new RPCs.
 7. **Project Settings → API Keys:** copy the **Project URL** and the **Publishable** key. The app never uses the secret key, so do not put it anywhere.
 
 ## 2. Check the Supabase project before launch
@@ -81,6 +83,10 @@ Deploy from the Vercel dashboard or by pushing to the production branch. Then ch
 - [ ] **WhatsApp preview image:** paste the live link into a WhatsApp chat. The preview shows the scorecard image, and `curl -sI https://<domain>/m/<code>/opengraph-image` returns a PNG. WhatsApp remembers previews per link, so test with a link it has not seen.
 - [ ] **Share links use the real domain:** the WhatsApp text and the page's `og:image` start with `https://<domain>`, not `http://localhost:3200`.
 - [ ] **Google sign-in:** on every host people use (apex, `www`, `vercel.app`), the button on `/account` returns to `/account` on that same host with your matches listed. If it lands on the Site URL instead, Supabase rejected the redirect: add that host's `/**` entry to the Redirect URLs.
+- [ ] **Team page:** sign in with Google on `/team`, create the team, add a few squad players and a season, and add a fixture. Open the public link (`https://<domain>/t/<team code>`) in a private window: it shows the team without any sign-in.
+- [ ] **Scorer invite:** on `/team`, tap **Invite a scorer** and open the link on a second phone signed in with another Google account. It says "You score for <team>", and that phone's `/new` offers "My team is playing".
+- [ ] **A team match counts:** score a short team match from the squad, finish it, then reload `/t/<team code>` after a minute (the page is cached for 60 seconds). The result, the record and the leaderboards include it, and the player pages show the match. Choose a Player of the match on `/team` and check it shows.
+- [ ] **Team preview image:** `curl -sI https://<domain>/t/<team code>/opengraph-image` returns a PNG, and a WhatsApp chat shows the team name with the top run scorers and wicket takers.
 - [ ] **CDN caching of the polling route:** with two viewers on the live page, open DevTools → Network on one and read the response headers of `/api/m/<code>/events?after=<n>`. Expect `x-vercel-cache: HIT` on most polls. Use real viewers, not only `curl`: the page's own request uses fetch `cache: "no-cache"`. If every poll is a `MISS`, the CDN is not absorbing the load, and the fix is in `src/lib/live/feed.ts`.
 
 ## 5. Testing on a phone
@@ -97,5 +103,9 @@ The launch runs on Supabase Free and Vercel Hobby. Check each dashboard's usage 
 - **Vercel requests and bandwidth:** polling is the main cost. The events route is cached at the CDN for `LIVE_CACHE_SECONDS` (default 2), so many viewers cost a few database reads. To spend less, raise `LIVE_CACHE_SECONDS` (runtime) or `NEXT_PUBLIC_POLL_MS` (build time, default 5000). The share card is rendered on every press.
 - **No automatic backups** on the free plan. Take a `pg_dump` now and then (connection string under Project Settings → Database). The scorer's phone also keeps a full copy while a match is being scored.
 - **Built-in limits** in `push_match_events`: 20 new matches per owner per 24 hours, `seq` up to 5000 per match, 500 events per push, 4 KB per event payload and per `rules`, 8 KB for `summary`. A push over a limit is refused and the match stays "Saved on phone"; the phone tries that match again every 15 minutes while other matches keep syncing. Nothing is lost.
+- **Team limits:**
+  - Each team can have 60 squad players, 300 fixtures, 30 seasons, 10 scorers and 5 open invites.
+  - A match's player record can be up to 16 KB. A bigger one is stored as empty: the match still syncs, but its figures don't count.
+  - The public team page reads up to 500 matches and caches the result for 60 seconds. One team's season is a few hundred KB, well inside the free tier.
 - **Pausing:** Supabase pauses a free project after about a week without activity. This only matters before launch.
 - **Vercel Hobby is for non-commercial use.** Move to Pro before adding paid features or ads.
