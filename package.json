@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test"
   },
+  
   "dependencies": {
     "@hookform/resolvers": "^5.9.2",
     "@marsidev/react-turnstile": "^1.6.3",
