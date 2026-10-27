@@ -121,6 +121,7 @@ test("an owner adds a player and the team is fetched again", async ({ page }) =>
   await page.goto("/team");
   const squad = page.getByRole("region", { name: "Squad" });
   await expect(squad.getByRole("listitem")).toHaveCount(5);
+  await expect(page.getByRole("region", { name: "Scorers" })).toContainText("No scorers yet.");
   calls.myTeam = 0;
 
   const upsert = page.waitForRequest((request) => request.url().endsWith("/rpc/upsert_squad_players"));
