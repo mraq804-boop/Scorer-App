@@ -216,6 +216,24 @@ describe("refreshTeamCache", () => {
     expect(await getSquadOutbox(db, TEAM_ID)).toEqual([waiting]);
   });
 
+  it("keeps the cache and the outbox when the session turns into a guest's before a not-a-member answer is applied", async () => {
+    const db = freshDb();
+    const team = cachedTeam();
+    await cacheTeam(db, team);
+    const waiting = await addSquadPlayerOffline(db, { name: "Zain", role: null });
+    let checks = 0;
+    const { client, rpc } = clientWith(
+      () => ok(null),
+      () => ((checks += 1) === 1 ? "member" : "guest"),
+    );
+
+    await expect(refreshTeamCache(client, db)).rejects.toMatchObject({ name: "TeamRemoteError", code: "not_signed_in" });
+
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect((await getCachedTeam(db))?.squad).toEqual([...team.squad, waiting]);
+    expect(await getSquadOutbox(db, TEAM_ID)).toEqual([waiting]);
+  });
+
   it("refreshes under a Google session", async () => {
     const db = freshDb();
     await cacheTeam(db, cachedTeam({ name: "Old name" }));

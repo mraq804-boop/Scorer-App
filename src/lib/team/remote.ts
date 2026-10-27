@@ -136,6 +136,7 @@ export async function refreshTeamCache(client: SupabaseClient, db: LocalDb): Pro
   if ((await sessionKind(client)) === "guest") throw new TeamRemoteError("not_signed_in");
   const team = await fetchMyTeam(client);
   if (team === null) {
+    if ((await sessionKind(client)) !== "member") throw new TeamRemoteError("not_signed_in");
     await clearCachedTeam(db);
     return null;
   }

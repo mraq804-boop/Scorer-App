@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import type { LocalMatch, StoredEvent, SquadOutboxRow } from "@/lib/local/db";
 import { runs, score } from "./support/scoring";
 import {
@@ -86,6 +86,7 @@ test("team match starts offline from the cached squad", async ({ page, context }
 
   const { match, added, innings } = await started(page);
   expect(match?.teams).toEqual(["Lions", "Tigers"]);
+  expect(match?.rules.playersPerSide).toEqual({ A: 3, B: 11 });
   expect(match?.team).toEqual({
     id: TEAM_ID,
     side: "A",
@@ -248,6 +249,35 @@ test("the team's side is picked from the XI, and an XI needs two players", async
   await nonStriker(page).selectOption({ label: "Usman" });
   await start(page).click();
   await expect(page).toHaveURL(/\/score\?m=/);
+});
+
+test("the XI sets Team A's players until the scorer changes them", async ({ page }) => {
+  await openWithTeam(page);
+  await page.getByRole("button", { name: "Rules" }).click();
+  const teamAPlayers = page.getByRole("group", { name: "Team A players" });
+  const teamBPlayers = page.getByRole("group", { name: "Team B players" });
+  const count = (group: Locator) => group.locator("span[aria-live]");
+
+  await expect(count(teamAPlayers)).toHaveText("2");
+  await tick(page, /^Ali\b/, /^Hamza\b/, /^Usman\b/);
+  await expect(count(teamAPlayers)).toHaveText("3");
+  await tick(page, /^Bilal\b/);
+  await expect(count(teamAPlayers)).toHaveText("4");
+  await expect(count(teamBPlayers)).toHaveText("11");
+
+  await page.getByRole("button", { name: "Increase Team A players" }).click();
+  await expect(count(teamAPlayers)).toHaveText("5");
+  await xiGroup(page).getByRole("checkbox", { name: /^Bilal\b/ }).uncheck();
+  await expect(count(teamAPlayers)).toHaveText("5");
+
+  await opponent(page).fill("Tigers");
+  await striker(page).selectOption({ label: "Ali" });
+  await nonStriker(page).selectOption({ label: "Hamza" });
+  await bowler(page).fill("Kamran");
+  await start(page).click();
+
+  const { match } = await started(page);
+  expect(match?.rules.playersPerSide).toEqual({ A: 5, B: 11 });
 });
 
 test("when the team fields first the opening bowler is picked from the XI", async ({ page }) => {

@@ -50,7 +50,7 @@ const setupPlayer = z.union([nameSchema, squadPlayer]);
 const teamSetup = z.object({
   id: z.string().min(1),
   fixtureId: z.string().min(1).nullable(),
-  xi: z.array(squadPlayer).min(PLAYERS_MIN, t("setup.error.xi")),
+  xi: z.array(squadPlayer).min(PLAYERS_MIN, t("setup.error.xi")).max(PLAYERS_MAX, t("setup.error.xiMax")),
 });
 
 const OPENING_FIELDS = ["striker", "nonStriker", "bowler"] as const;

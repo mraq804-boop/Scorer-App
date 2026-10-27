@@ -22,7 +22,7 @@ import { defaultRules, otherSide } from "@/lib/scoring";
 import type { BallType, Rules, TeamSide } from "@/lib/scoring";
 import type { SquadPlayer } from "@/lib/team";
 import { getCachedTeam } from "@/lib/team/local";
-import { OVERS_MAX, OVERS_MIN, validateMatchSetup } from "@/lib/validation/match-setup";
+import { OVERS_MAX, OVERS_MIN, PLAYERS_MAX, PLAYERS_MIN, validateMatchSetup } from "@/lib/validation/match-setup";
 import type { MatchSetupErrors, MatchSetupField } from "@/lib/validation/match-setup";
 
 type Choice = "bat" | "bowl";
@@ -135,13 +135,23 @@ function SetupForm({ players, team, fixture }: SetupFormProps) {
   };
 
   const overs = values.overs.trim() === "" ? Number.NaN : Number(values.overs);
-  const rules: Rules = { ...defaultRules(values.ballType, overs), ...values.touched };
-  const battingSide = values.choice === "bat" ? values.winner : otherSide(values.winner);
   const playing = values.playingTeam ? team : undefined;
+  const xiPlayers = squad.filter((player) => values.xi.includes(player.id));
+  const defaults = defaultRules(values.ballType, overs);
+  const xiRules: Partial<Rules> =
+    playing === undefined
+      ? {}
+      : {
+          playersPerSide: {
+            ...defaults.playersPerSide,
+            A: Math.min(PLAYERS_MAX, Math.max(PLAYERS_MIN, xiPlayers.length)),
+          },
+        };
+  const rules: Rules = { ...defaults, ...xiRules, ...values.touched };
+  const battingSide = values.choice === "bat" ? values.winner : otherSide(values.winner);
   const teamBatting = playing !== undefined && battingSide === "A";
   const teamBowling = playing !== undefined && battingSide === "B";
   const labels = squadLabels(squad);
-  const xiPlayers = squad.filter((player) => values.xi.includes(player.id));
   const pickFor = (id: string): SetupPlayer => {
     const chosen = xiPlayers.find((player) => player.id === id);
     return chosen === undefined ? "" : { id: chosen.id, name: chosen.name };

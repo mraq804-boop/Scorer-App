@@ -63,6 +63,8 @@ export const en = {
   "setup.error.overs": "Enter overs from 1 to 100",
   "setup.error.form": "Check the match details and try again",
   "setup.error.xi": "Pick at least 2 players for your XI",
+  "setup.error.xiMax": "Pick at most 15 players for your XI",
+  "setup.duplicateName": "{name} ({n})",
   "setup.error.notInXi": "Pick someone from your XI",
   "setup.error.pickPlayer": "Pick a player from your XI",
   "setup.myTeam": "My team is playing",

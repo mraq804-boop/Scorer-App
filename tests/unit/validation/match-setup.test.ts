@@ -179,6 +179,17 @@ describe("validateMatchSetup for a team match", () => {
     });
   });
 
+  it("allows 15 players in the XI and rejects 16", () => {
+    const others = Array.from({ length: 14 }, (_, index) => ({ id: crypto.randomUUID(), name: `Player ${index}` }));
+    const full = { ...team, xi: [ali, usman, ...others.slice(0, 13)] };
+    const over = { ...team, xi: [ali, usman, ...others] };
+
+    expect(full.xi).toHaveLength(15);
+    expect(validateMatchSetup(teamInput({ team: full })).ok).toBe(true);
+    expect(over.xi).toHaveLength(16);
+    expect(failure(teamInput({ team: over }))).toEqual({ xi: t("setup.error.xiMax") });
+  });
+
   it("rejects a team without an id", () => {
     expect(failure(teamInput({ team: { ...team, id: "" } }))).toEqual({ form: expect.any(String) });
   });

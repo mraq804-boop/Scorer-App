@@ -43,7 +43,7 @@ export function squadLabels(squad: readonly SquadPlayer[]): Map<string, string> 
     }
     const position = (seen.get(keyOf(player)) ?? 0) + 1;
     seen.set(keyOf(player), position);
-    labels.set(player.id, `${player.name} (${position})`);
+    labels.set(player.id, t("setup.duplicateName", { name: player.name, n: position }));
   }
   return labels;
 }
