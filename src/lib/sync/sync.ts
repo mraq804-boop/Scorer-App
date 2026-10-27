@@ -196,15 +196,6 @@ export function requestSync(): void {
   activeLoop?.trigger();
 }
 
-async function squadSettled(db: LocalDb, pushSquad: SquadPushFn | undefined): Promise<boolean> {
-  if (pushSquad === undefined) return true;
-  try {
-    return await pushSquad(db);
-  } catch {
-    return false;
-  }
-}
-
 export function startSyncLoop({ db, push, claim, isReady, pushSquad }: SyncLoopOptions): () => void {
   activeLoop?.stop();
 
@@ -213,22 +204,64 @@ export function startSyncLoop({ db, push, claim, isReady, pushSquad }: SyncLoopO
   let again = false;
   let attempt = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let squadRunning = false;
+  let squadAgain = false;
+  let squadDue = true;
+  let squadAttempt = 0;
+  let squadTimer: ReturnType<typeof setTimeout> | undefined;
 
   const cancelTimer = () => {
     clearTimeout(timer);
     timer = undefined;
   };
 
-  async function attemptPass(): Promise<boolean> {
-    if (!(await isReady())) return !(await hasUnsyncedMatches(db));
-    if (stopped) return true;
-    const squadDone = await squadSettled(db, pushSquad);
-    if (stopped) return true;
-    const matchesDone = (await syncAll(db, push, { claim })) === "synced";
-    return squadDone && matchesDone;
+  const cancelSquadTimer = () => {
+    clearTimeout(squadTimer);
+    squadTimer = undefined;
+  };
+
+  async function squadPass(): Promise<void> {
+    if (stopped || pushSquad === undefined) return;
+    if (squadRunning) {
+      squadAgain = true;
+      return;
+    }
+    squadRunning = true;
+    cancelSquadTimer();
+    let done = false;
+    try {
+      done = await pushSquad(db);
+    } catch {
+      done = false;
+    }
+    squadRunning = false;
+    squadDue = !done;
+    if (stopped) return;
+    if (done) {
+      squadAttempt = 0;
+    } else {
+      squadTimer = setTimeout(() => void squadRetry(), nextDelay(squadAttempt));
+      squadAttempt += 1;
+    }
+    if (squadAgain) {
+      squadAgain = false;
+      void squadPass();
+    }
   }
 
-  async function pass(): Promise<void> {
+  async function squadRetry(): Promise<void> {
+    squadTimer = undefined;
+    if (!stopped && (await isReady())) await squadPass();
+  }
+
+  async function attemptPass(withSquad: boolean): Promise<boolean> {
+    if (!(await isReady())) return !(await hasUnsyncedMatches(db));
+    if (stopped) return true;
+    if (withSquad || (squadDue && !squadRunning && squadTimer === undefined)) void squadPass();
+    return (await syncAll(db, push, { claim })) === "synced";
+  }
+
+  async function pass(withSquad = true): Promise<void> {
     if (stopped) return;
     if (running) {
       again = true;
@@ -238,7 +271,7 @@ export function startSyncLoop({ db, push, claim, isReady, pushSquad }: SyncLoopO
     cancelTimer();
     let done = false;
     try {
-      done = await attemptPass();
+      done = await attemptPass(withSquad);
     } catch {
       done = false;
     }
@@ -247,7 +280,7 @@ export function startSyncLoop({ db, push, claim, isReady, pushSquad }: SyncLoopO
     if (done) {
       attempt = 0;
     } else {
-      timer = setTimeout(() => void pass(), nextDelay(attempt));
+      timer = setTimeout(() => void pass(false), nextDelay(attempt));
       attempt += 1;
     }
     if (again) {
@@ -270,6 +303,7 @@ export function startSyncLoop({ db, push, claim, isReady, pushSquad }: SyncLoopO
       if (stopped) return;
       stopped = true;
       cancelTimer();
+      cancelSquadTimer();
       if (typeof window !== "undefined") window.removeEventListener("online", onOnline);
       if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisibilityChange);
       activeLoop = undefined;

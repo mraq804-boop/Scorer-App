@@ -1188,7 +1188,7 @@ describe("squad outbox in the sync loop", () => {
   const ready = () => true;
   const claim = async () => {};
 
-  it("pushes the squad before the match balls in the same pass", async () => {
+  it("starts the squad push before the match pushes in the same pass", async () => {
     const db = freshDb();
     const match = await createLocalMatch(db, setup());
     const order: string[] = [];
@@ -1214,7 +1214,7 @@ describe("squad outbox in the sync loop", () => {
     expect(order).toEqual(["squad", "match"]);
   });
 
-  it("pushes the squad again on every pass, even when no match needs syncing", async () => {
+  it("pushes the squad again on every triggered pass, even when no match needs syncing", async () => {
     const db = freshDb();
     const pushSquad = vi.fn(async () => true);
     startLoop({ db, push: server().push, claim, isReady: ready, pushSquad });
@@ -1224,7 +1224,29 @@ describe("squad outbox in the sync loop", () => {
     await until(() => pushSquad.mock.calls.length === 2);
   });
 
-  it("still pushes every match when the squad push throws, and retries the squad on the backoff", async () => {
+  it("does not make the balls wait for a slow squad push", async () => {
+    const db = freshDb();
+    const match = await createLocalMatch(db, setup());
+    let release: (done: boolean) => void = () => {};
+    const pushSquad = vi.fn(() => new Promise<boolean>((resolve) => (release = resolve)));
+    const fake = server();
+    startLoop({ db, push: fake.push, claim, isReady: ready, pushSquad });
+
+    await until(async () => (await db.matches.get(match.id))?.syncState === "synced");
+
+    expect(pushSquad).toHaveBeenCalledTimes(1);
+    expect(fake.seqs()).toEqual([[1, 2, 3, 4, 5]]);
+
+    await addBalls(db, match.id, 1);
+    requestSync();
+    await until(async () => (await db.matches.get(match.id))?.syncedSeq === 6);
+    expect(pushSquad).toHaveBeenCalledTimes(1);
+
+    release(true);
+    await until(() => pushSquad.mock.calls.length === 2);
+  });
+
+  it("still pushes every match when the squad push throws, and retries the squad on its own backoff", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const db = freshDb();
     const match = await createLocalMatch(db, setup());
@@ -1250,7 +1272,7 @@ describe("squad outbox in the sync loop", () => {
     expect(fake.calls).toHaveLength(1);
   });
 
-  it("treats a squad push that could not send everything as a failure and backs off", async () => {
+  it("backs off a squad push that could not send everything, on a counter of its own", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const db = freshDb();
     const match = await createLocalMatch(db, setup());
@@ -1265,8 +1287,93 @@ describe("squad outbox in the sync loop", () => {
     await vi.advanceTimersByTimeAsync(1);
     await until(() => pushSquad.mock.calls.length === 2);
     await until(() => vi.getTimerCount() === 1);
-    await vi.advanceTimersByTimeAsync(nextDelay(1));
+    await vi.advanceTimersByTimeAsync(nextDelay(1) - 1);
+    expect(pushSquad).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
     await until(() => pushSquad.mock.calls.length === 3);
+  });
+
+  it("does not let a stuck squad push slow the retry of a failing match", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const db = freshDb();
+    const match = await createLocalMatch(db, setup());
+    const fake = server();
+    let failNext = false;
+    const push: PushFn = async (args) => {
+      if (!failNext) return fake.push(args);
+      failNext = false;
+      fake.calls.push(args);
+      return NETWORK;
+    };
+    const pushSquad = vi.fn(async () => false);
+    startLoop({ db, push, claim, isReady: ready, pushSquad });
+    await until(async () => (await db.matches.get(match.id))?.syncState === "synced");
+    for (let i = 0; i < 6; i++) {
+      await vi.advanceTimersByTimeAsync(nextDelay(i));
+      await until(() => pushSquad.mock.calls.length === i + 2);
+    }
+
+    failNext = true;
+    await addBalls(db, match.id, 1);
+    const before = fake.calls.length;
+    requestSync();
+    await until(() => fake.calls.length === before + 1);
+    await settle();
+
+    await vi.advanceTimersByTimeAsync(nextDelay(0) - 1);
+    expect(fake.calls).toHaveLength(before + 1);
+    await vi.advanceTimersByTimeAsync(1);
+    await until(async () => (await db.matches.get(match.id))?.syncedSeq === 6);
+    expect(fake.calls).toHaveLength(before + 2);
+  });
+
+  it("leaves a squad push alone while a failing match retries on its own backoff", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const db = freshDb();
+    const match = await createLocalMatch(db, setup());
+    const fake = server([NETWORK, NETWORK]);
+    const pushSquad = vi.fn(async () => false);
+    startLoop({ db, push: fake.push, claim, isReady: ready, pushSquad });
+    await until(() => fake.calls.length === 1 && pushSquad.mock.calls.length === 1);
+
+    await vi.advanceTimersByTimeAsync(nextDelay(0));
+    await until(() => fake.calls.length === 2 && pushSquad.mock.calls.length === 2);
+    await vi.advanceTimersByTimeAsync(nextDelay(1));
+    await until(async () => (await db.matches.get(match.id))?.syncState === "synced");
+    await until(() => pushSquad.mock.calls.length === 3);
+
+    expect(fake.calls).toHaveLength(3);
+  });
+
+  it("does not re-run a squad push that went well just because a match is retrying", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const db = freshDb();
+    const match = await createLocalMatch(db, setup());
+    const fake = server([NETWORK, NETWORK]);
+    const pushSquad = vi.fn(async () => true);
+    startLoop({ db, push: fake.push, claim, isReady: ready, pushSquad });
+    await until(() => fake.calls.length === 1 && vi.getTimerCount() === 1);
+
+    await vi.advanceTimersByTimeAsync(nextDelay(0));
+    await until(() => fake.calls.length === 2 && vi.getTimerCount() === 1);
+    await vi.advanceTimersByTimeAsync(nextDelay(1));
+    await until(async () => (await db.matches.get(match.id))?.syncState === "synced");
+
+    expect(fake.calls).toHaveLength(3);
+    expect(pushSquad).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs a waiting squad retry at once when something asks for a sync", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const db = freshDb();
+    const pushSquad = vi.fn(async () => false);
+    startLoop({ db, push: server().push, claim, isReady: ready, pushSquad });
+    await until(() => pushSquad.mock.calls.length === 1 && vi.getTimerCount() === 1);
+
+    requestSync();
+
+    await until(() => pushSquad.mock.calls.length === 2);
+    await until(() => vi.getTimerCount() === 1);
   });
 
   it("does not push the squad before a session exists", async () => {
@@ -1283,6 +1390,37 @@ describe("squad outbox in the sync loop", () => {
     session = true;
     await vi.advanceTimersByTimeAsync(2000);
     await until(() => pushSquad.mock.calls.length === 1);
+  });
+
+  it("does not retry a failed squad push once the session is gone", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const db = freshDb();
+    const pushSquad = vi.fn(async () => false);
+    let session = true;
+    startLoop({ db, push: server().push, claim, isReady: () => session, pushSquad });
+    await until(() => pushSquad.mock.calls.length === 1 && vi.getTimerCount() === 1);
+
+    session = false;
+    await vi.advanceTimersByTimeAsync(nextDelay(0));
+    await settle();
+
+    expect(pushSquad).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("stop cancels a waiting squad retry", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const db = freshDb();
+    const pushSquad = vi.fn(async () => false);
+    const stop = startLoop({ db, push: server().push, claim, isReady: ready, pushSquad });
+    await until(() => pushSquad.mock.calls.length === 1 && vi.getTimerCount() === 1);
+
+    stop();
+    await vi.advanceTimersByTimeAsync(120000);
+    await settle();
+
+    expect(vi.getTimerCount()).toBe(0);
+    expect(pushSquad).toHaveBeenCalledTimes(1);
   });
 
   it("does not push the squad after the loop is stopped while it waited for isReady", async () => {

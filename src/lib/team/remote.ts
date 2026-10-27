@@ -2,7 +2,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CachedFixture, CachedTeam, LocalDb } from "@/lib/local/db";
 import { isConstraintViolation, isTransient } from "@/lib/sync/push";
 import type { RpcError, SquadPushFn } from "@/lib/sync/push";
-import { cacheTeam, clearCachedTeam, getCachedTeam, getSquadOutbox, removeFromSquadOutbox } from "./local";
+import {
+  cacheTeam,
+  clearCachedTeam,
+  getCachedTeam,
+  getSquadOutbox,
+  getSquadOutboxByTeam,
+  removeFromSquadOutbox,
+} from "./local";
 import type { Season, SquadPlayer } from "./types";
 
 export type TeamError =
@@ -174,15 +181,60 @@ export function upsertSquadPlayers(
   return call(client, "upsert_squad_players", { p_team: teamId, p_players: players }, readCount);
 }
 
+type SendOutcome = "done" | "retry" | "refused";
+
+async function sendSquad(
+  client: SupabaseClient,
+  db: LocalDb,
+  teamId: string,
+  players: SquadPlayer[],
+  isCurrent: boolean,
+): Promise<SendOutcome> {
+  const result = await upsertSquadPlayers(client, teamId, players);
+  const ids = players.map((player) => player.id);
+  if (result.ok) {
+    await removeFromSquadOutbox(db, ids);
+    return "done";
+  }
+  switch (result.error) {
+    case "refused":
+    case "quota_exceeded":
+      return "refused";
+    case "not_team_owner":
+      if (isCurrent) return "retry";
+      await removeFromSquadOutbox(db, ids);
+      return "done";
+    default:
+      return "retry";
+  }
+}
+
+async function pushTeamSquad(
+  client: SupabaseClient,
+  db: LocalDb,
+  teamId: string,
+  players: SquadPlayer[],
+  isCurrent: boolean,
+): Promise<boolean> {
+  const batch = await sendSquad(client, db, teamId, players, isCurrent);
+  if (batch !== "refused") return batch === "done";
+  for (const player of players) {
+    const single = await sendSquad(client, db, teamId, [player], isCurrent);
+    if (single === "retry") return false;
+    if (single === "refused") await removeFromSquadOutbox(db, [player.id]);
+  }
+  return true;
+}
+
 export function supabaseSquadPush(client: SupabaseClient): SquadPushFn {
   return async (db) => {
-    const team = await getCachedTeam(db);
-    if (team === undefined) return true;
-    const players = await getSquadOutbox(db, team.id);
-    if (players.length === 0) return true;
-    const result = await upsertSquadPlayers(client, team.id, players);
-    if (!result.ok) return false;
-    await removeFromSquadOutbox(db, players.map((player) => player.id));
-    return true;
+    const groups = await getSquadOutboxByTeam(db);
+    if (groups.size === 0) return true;
+    const currentId = (await getCachedTeam(db))?.id;
+    let settled = true;
+    for (const [teamId, players] of groups) {
+      if (!(await pushTeamSquad(client, db, teamId, players, teamId === currentId))) settled = false;
+    }
+    return settled;
   };
 }

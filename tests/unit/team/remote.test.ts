@@ -323,12 +323,28 @@ describe("team calls", () => {
 });
 
 describe("supabaseSquadPush", () => {
+  const OTHER_TEAM = "55555555-5555-4555-8555-555555555555";
+  const CHECK_VIOLATION = 'new row for relation "squad_players" violates check constraint "squad_players_name_check"';
+
   async function teamWithOutbox(names: string[]) {
     const db = freshDb();
     await cacheTeam(db, cachedTeam());
     const players = [];
     for (const name of names) players.push(await addSquadPlayerOffline(db, { name, role: null }));
     return { db, players };
+  }
+
+  async function queueFor(db: LocalDb, teamId: string, name: string) {
+    const player = squadPlayer(name);
+    await db.squadOutbox.put({ ...player, teamId });
+    return player;
+  }
+
+  function sentTo(rpc: { mock: { calls: unknown[][] } }) {
+    return rpc.mock.calls.map(([, args]) => {
+      const { p_team, p_players } = args as { p_team: string; p_players: Array<{ name: string }> };
+      return { team: p_team, names: p_players.map((player) => player.name).sort() };
+    });
   }
 
   it("sends the outbox to the cached team and clears what it sent", async () => {
@@ -391,26 +407,119 @@ describe("supabaseSquadPush", () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
-  it("makes no call and keeps the outbox when no team is cached", async () => {
-    const db = freshDb();
-    await db.squadOutbox.put({ id: crypto.randomUUID(), name: "Zain", role: null, active: true, teamId: TEAM_ID });
+  it("sends each team's players to that team, even after the cache moved to another team", async () => {
+    const { db } = await teamWithOutbox(["Zain"]);
+    await queueFor(db, OTHER_TEAM, "Elsewhere");
     const { client, rpc } = clientWith(() => ok(1));
 
     expect(await supabaseSquadPush(client)(db)).toBe(true);
-    expect(rpc).not.toHaveBeenCalled();
+
+    expect(rpc).toHaveBeenCalledTimes(2);
+    expect(sentTo(rpc)).toEqual(
+      expect.arrayContaining([
+        { team: TEAM_ID, names: ["Zain"] },
+        { team: OTHER_TEAM, names: ["Elsewhere"] },
+      ]),
+    );
+    expect(await db.squadOutbox.count()).toBe(0);
+  });
+
+  it("sends the players to the team they were added for when no team is cached", async () => {
+    const db = freshDb();
+    await queueFor(db, TEAM_ID, "Zain");
+    const { client, rpc } = clientWith(() => ok(1));
+
+    expect(await supabaseSquadPush(client)(db)).toBe(true);
+
+    expect(sentTo(rpc)).toEqual([{ team: TEAM_ID, names: ["Zain"] }]);
+    expect(await db.squadOutbox.count()).toBe(0);
+  });
+
+  it("drops the players of a team the person no longer belongs to, but retries the cached team", async () => {
+    const { db } = await teamWithOutbox(["Zain"]);
+    await queueFor(db, OTHER_TEAM, "Left behind");
+    const { client, rpc } = clientWith((_name, args) => {
+      const team = (args as { p_team: string }).p_team;
+      return team === OTHER_TEAM ? fail("not_team_owner", 400, "P0001") : ok(1);
+    });
+
+    expect(await supabaseSquadPush(client)(db)).toBe(true);
+    expect(await db.squadOutbox.toArray()).toEqual([]);
+    expect(rpc).toHaveBeenCalledTimes(2);
+
+    const cachedRefused = clientWith(() => fail("not_team_owner", 400, "P0001"));
+    await addSquadPlayerOffline(db, { name: "Kept", role: null });
+
+    expect(await supabaseSquadPush(cachedRefused.client)(db)).toBe(false);
     expect(await db.squadOutbox.count()).toBe(1);
   });
 
-  it("never sends players that were added for another team", async () => {
+  it("keeps pushing other teams when one team's push fails", async () => {
     const { db } = await teamWithOutbox(["Zain"]);
-    const stray = { id: crypto.randomUUID(), name: "Stray", role: null, active: true, teamId: "someone-else" } as const;
-    await db.squadOutbox.put(stray);
-    const { client, rpc } = clientWith(() => ok(1));
+    await queueFor(db, OTHER_TEAM, "Elsewhere");
+    const { client } = clientWith((_name, args) =>
+      (args as { p_team: string }).p_team === TEAM_ID ? fail("Bad Gateway", 502) : ok(1),
+    );
 
-    await supabaseSquadPush(client)(db);
+    expect(await supabaseSquadPush(client)(db)).toBe(false);
 
-    const [, args] = rpc.mock.calls[0] as [string, { p_players: Array<{ name: string }> }];
-    expect(args.p_players.map((player) => player.name)).toEqual(["Zain"]);
-    expect(await db.squadOutbox.toArray()).toEqual([stray]);
+    expect((await db.squadOutbox.toArray()).map((row) => row.name)).toEqual(["Zain"]);
+  });
+
+  it("falls back to one player at a time when the batch is refused, so good rows land and the bad one is parked", async () => {
+    const { db, players } = await teamWithOutbox(["Zain", "Bad", "Bilal"]);
+    const { client, rpc } = clientWith((_name, args) => {
+      const sent = (args as { p_players: Array<{ name: string }> }).p_players;
+      return sent.some((player) => player.name === "Bad") ? fail(CHECK_VIOLATION, 400, "23514") : ok(sent.length);
+    });
+
+    expect(await supabaseSquadPush(client)(db)).toBe(true);
+
+    expect(rpc).toHaveBeenCalledTimes(4);
+    const singles = sentTo(rpc).slice(1);
+    expect(singles.map((call) => call.names)).toEqual(expect.arrayContaining([["Zain"], ["Bad"], ["Bilal"]]));
+    expect(singles.every((call) => call.names.length === 1)).toBe(true);
+    expect(await db.squadOutbox.count()).toBe(0);
+    expect((await getCachedTeam(db))?.squad).toEqual(expect.arrayContaining(players));
+  });
+
+  it("parks the players the server turns away for the squad limit and lands the ones that fit", async () => {
+    const { db } = await teamWithOutbox(["One", "Two", "Three"]);
+    let room = 2;
+    const { client } = clientWith((_name, args) => {
+      const sent = (args as { p_players: unknown[] }).p_players;
+      if (sent.length > room) return fail("quota_exceeded", 400, "P0001");
+      room -= sent.length;
+      return ok(sent.length);
+    });
+
+    expect(await supabaseSquadPush(client)(db)).toBe(true);
+
+    expect(room).toBe(0);
+    expect(await db.squadOutbox.count()).toBe(0);
+  });
+
+  it("parks a lone refused player", async () => {
+    const { db } = await teamWithOutbox(["Bad"]);
+    const { client } = clientWith(() => fail(CHECK_VIOLATION, 400, "23514"));
+
+    expect(await supabaseSquadPush(client)(db)).toBe(true);
+
+    expect(await db.squadOutbox.count()).toBe(0);
+  });
+
+  it("stops the one-by-one fallback on a transient failure and keeps the rest for later", async () => {
+    const { db } = await teamWithOutbox(["Zain", "Bad", "Bilal"]);
+    let single = 0;
+    const { client } = clientWith((_name, args) => {
+      const sent = (args as { p_players: unknown[] }).p_players;
+      if (sent.length > 1) return fail(CHECK_VIOLATION, 400, "23514");
+      single += 1;
+      return single === 1 ? ok(1) : fail("Bad Gateway", 502);
+    });
+
+    expect(await supabaseSquadPush(client)(db)).toBe(false);
+
+    expect(await db.squadOutbox.count()).toBe(2);
   });
 });
