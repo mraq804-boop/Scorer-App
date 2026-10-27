@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildPatch, fieldsOf, findBall, isUnchanged } from "@/components/scoring/ball-patch";
 import type { BallFields, EditableBall } from "@/components/scoring/ball-patch";
 import { chooseTypedPlayer, choosePlayer, fielderOptions, xiFor } from "@/components/scoring/player-drafts";
-import type { MatchTeam } from "@/components/scoring/player-drafts";
+import type { MatchTeam, PlayerChoice } from "@/components/scoring/player-drafts";
 import { defaultRules } from "@/lib/scoring";
 import type { DeliveryEvent } from "@/lib/scoring";
 import { TestMatch } from "../../helpers/match";
@@ -28,6 +28,11 @@ function caught(overrides: Partial<BallFields> = {}): BallFields {
     fielderId: null,
     ...overrides,
   };
+}
+
+function typed(result: PlayerChoice | "ambiguous"): PlayerChoice {
+  if (result === "ambiguous") throw new Error("the name was ambiguous");
+  return result;
 }
 
 function editable(m: TestMatch, event: DeliveryEvent): EditableBall {
@@ -85,7 +90,7 @@ describe("xiFor", () => {
 describe("chooseTypedPlayer", () => {
   it("turns a typed name that is in the XI into that squad player", () => {
     const m = new TestMatch();
-    const choice = chooseTypedPlayer(m.state, "A", " bilal ", [BILAL, FAISAL]);
+    const choice = typed(chooseTypedPlayer(m.state, "A", " bilal ", [BILAL, FAISAL]));
     expect(choice).toEqual({
       id: BILAL.id,
       drafts: [{ type: "player_added", player: { id: BILAL.id, name: "Bilal", team: "A" } }],
@@ -94,7 +99,7 @@ describe("chooseTypedPlayer", () => {
 
   it("gives a name outside the XI a fresh id like a plain typed name", () => {
     const m = new TestMatch();
-    const choice = chooseTypedPlayer(m.state, "A", "Kamran", [BILAL, FAISAL]);
+    const choice = typed(chooseTypedPlayer(m.state, "A", "Kamran", [BILAL, FAISAL]));
     expect(choice.id).not.toBe(BILAL.id);
     expect(choice.drafts).toEqual([{ type: "player_added", player: { id: choice.id, name: "Kamran", team: "A" } }]);
   });
@@ -102,7 +107,69 @@ describe("chooseTypedPlayer", () => {
   it("behaves like choosePlayer when the side has no XI", () => {
     const m = new TestMatch();
     expect(chooseTypedPlayer(m.state, "A", "ali", [])).toEqual({ id: m.id("Ali"), drafts: [] });
-    expect(chooseTypedPlayer(m.state, "A", "Ali", [], (player) => player.id !== m.id("Ali")).drafts).toHaveLength(1);
+    expect(typed(chooseTypedPlayer(m.state, "A", "Ali", [], (player) => player.id !== m.id("Ali"))).drafts).toHaveLength(1);
+  });
+
+  it("reuses a player of the match who is also in the XI without adding him again", () => {
+    const m = new TestMatch();
+    expect(chooseTypedPlayer(m.state, "A", "ali", [{ id: m.id("Ali"), name: "Ali" }, BILAL])).toEqual({
+      id: m.id("Ali"),
+      drafts: [],
+    });
+  });
+
+  it("reuses a lone same-named player of the match when no XI member has that name", () => {
+    const m = new TestMatch();
+    expect(chooseTypedPlayer(m.state, "A", "Usman", [BILAL])).toEqual({ id: m.id("Usman"), drafts: [] });
+  });
+});
+
+describe("chooseTypedPlayer with a name that more than one player has", () => {
+  const FIRST_ALI = { id: "squad-ali-1", name: "Ali" };
+  const SECOND_ALI = { id: "squad-ali-2", name: "Ali" };
+
+  it("refuses when two XI members share the typed name", () => {
+    const m = new TestMatch();
+    expect(chooseTypedPlayer(m.state, "A", "Saad", [{ id: "s-1", name: "Saad" }, { id: "s-2", name: "saad" }])).toBe("ambiguous");
+    expect(chooseTypedPlayer(m.state, "A", " ali ", [FIRST_ALI, SECOND_ALI])).toBe("ambiguous");
+  });
+
+  it("refuses when an XI member and a player already in the match share the name", () => {
+    const m = new TestMatch();
+    const earlier = { id: m.id("Ali"), name: "Ali" };
+    expect(chooseTypedPlayer(m.state, "A", "Ali", [earlier, SECOND_ALI])).toBe("ambiguous");
+  });
+
+  it("refuses to bring back a player who already bowled when another XI member has his name", () => {
+    const m = new TestMatch({ toss: { winner: "A", choice: "bowl" }, bowler: "Ali", openers: ["Hamza", "Kamran"] });
+    const bowledAlready = m.state.players[m.id("Ali")];
+    expect(bowledAlready?.team).toBe("A");
+    expect(chooseTypedPlayer(m.state, "A", "Ali", [SECOND_ALI])).toBe("ambiguous");
+  });
+
+  it("does not offer an XI member the caller cannot reuse", () => {
+    const m = new TestMatch();
+    const choice = typed(chooseTypedPlayer(m.state, "A", "Ali", [{ id: m.id("Ali"), name: "Ali" }], (player) => player.id !== m.id("Ali")));
+    expect(choice.id).not.toBe(m.id("Ali"));
+    expect(choice.drafts).toHaveLength(1);
+  });
+
+  it("refuses when two XI members who both bowled share the name", () => {
+    const m = new TestMatch({ toss: { winner: "A", choice: "bowl" }, bowler: "Ali", openers: ["Hamza", "Kamran"] });
+    m.push({ type: "player_added", player: { id: "squad-ali-2", name: "Ali", team: "A" } });
+    expect(chooseTypedPlayer(m.state, "A", "Ali", [{ id: m.id("Ali"), name: "Ali" }, SECOND_ALI])).toBe("ambiguous");
+  });
+
+  it("does not count a player the caller cannot reuse", () => {
+    const m = new TestMatch();
+    const choice = typed(chooseTypedPlayer(m.state, "A", "Ali", [SECOND_ALI], (player) => player.id !== m.id("Ali")));
+    expect(choice.id).toBe(SECOND_ALI.id);
+  });
+
+  it("never refuses on a side without an XI, whatever the match holds", () => {
+    const m = new TestMatch();
+    m.push({ type: "player_added", player: { id: "second-ali", name: "Ali", team: "A" } });
+    expect(typed(chooseTypedPlayer(m.state, "A", "Ali", []))).toEqual({ id: m.id("Ali"), drafts: [] });
   });
 });
 

@@ -58,10 +58,11 @@ type XiSelectProps = {
   labels: ReadonlyMap<string, string>;
   error?: string;
   empty?: string;
+  extra?: { value: string; label: string };
   onChange: (id: string) => void;
 };
 
-export function XiSelect({ name, label, value, players, labels, error, empty = t("setup.pickPlayer"), onChange }: XiSelectProps) {
+export function XiSelect({ name, label, value, players, labels, error, empty = t("setup.pickPlayer"), extra, onChange }: XiSelectProps) {
   const id = useId();
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
@@ -82,6 +83,7 @@ export function XiSelect({ name, label, value, players, labels, error, empty = t
             {labels.get(player.id)}
           </option>
         ))}
+        {extra !== undefined && <option value={extra.value}>{extra.label}</option>}
       </select>
       {error !== undefined && (
         <p id={`${id}-error`} className="text-sm text-destructive">

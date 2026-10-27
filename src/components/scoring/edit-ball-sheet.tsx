@@ -12,11 +12,10 @@ import {
   wicketOptions,
 } from "@/components/scoring/ball-patch";
 import type { EditableBall } from "@/components/scoring/ball-patch";
-import { NameField, NameSuggestions } from "@/components/scoring/name-field";
+import { FielderField } from "@/components/scoring/fielder-field";
 import { fielderOptions, suggestNames, xiFor } from "@/components/scoring/player-drafts";
 import type { MatchTeam } from "@/components/scoring/player-drafts";
 import { ToggleRow } from "@/components/scoring/rules-fields";
-import { XiSelect, squadLabels } from "@/components/scoring/team-xi-picker";
 import { SegmentedControl } from "@/components/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
@@ -53,7 +52,6 @@ export function EditBallSheet({ state, ball, matchTeam, busy, onClose, onSave }:
   const [fields, setFields] = useState(() => fieldsOf(ball.item));
   const [fielderError, setFielderError] = useState<string>();
   const wicketId = useId();
-  const fieldersId = useId();
 
   const hasWicket = ball.event.wicket !== null;
   const options = hasWicket ? wicketOptions(state, ball, fields.kind) : [];
@@ -63,10 +61,9 @@ export function EditBallSheet({ state, ball, matchTeam, busy, onClose, onSave }:
   const canSave = !busy && wicketFits && canCorrect(ball.event, patch) && !isUnchanged(patch, ball.item);
   const asksFielder = wicketKind !== null && WITH_FIELDER.has(wicketKind);
   const squad = fielderOptions(xiFor(matchTeam, ball.innings.bowlingTeam), state, ball.event.bowler);
-  const labels = squadLabels(squad);
 
   async function save() {
-    if (asksFielder && squad.length === 0 && fields.fielder.trim() !== "") {
+    if (asksFielder && fields.fielder.trim() !== "") {
       const parsed = nameSchema.safeParse(fields.fielder);
       if (!parsed.success) {
         setFielderError(parsed.error.issues[0]?.message);
@@ -134,36 +131,18 @@ export function EditBallSheet({ state, ball, matchTeam, busy, onClose, onSave }:
               </div>
             </div>
           )}
-          {asksFielder &&
-            (squad.length > 0 ? (
-              <XiSelect
-                name="fielder"
-                label={t("wicket.fielder")}
-                value={fields.fielderId ?? ""}
-                players={squad}
-                labels={labels}
-                empty={t("wicket.noFielder")}
-                onChange={(id) => {
-                  const picked = squad.find((player) => player.id === id);
-                  setFields((current) => ({ ...current, fielder: picked?.name ?? "", fielderId: picked?.id ?? null }));
-                }}
-              />
-            ) : (
-              <>
-                <NameField
-                  name="fielder"
-                  label={t("wicket.fielder")}
-                  value={fields.fielder}
-                  error={fielderError}
-                  list={fieldersId}
-                  onChange={(fielder) => {
-                    setFields((current) => ({ ...current, fielder }));
-                    setFielderError(undefined);
-                  }}
-                />
-                <NameSuggestions id={fieldersId} names={suggestNames(state, ball.innings.bowlingTeam, [])} />
-              </>
-            ))}
+          {asksFielder && (
+            <FielderField
+              squad={squad}
+              suggestions={suggestNames(state, ball.innings.bowlingTeam, [])}
+              value={{ fielder: fields.fielder, fielderId: fields.fielderId }}
+              error={fielderError}
+              onChange={(value) => {
+                setFields((current) => ({ ...current, ...value }));
+                setFielderError(undefined);
+              }}
+            />
+          )}
         </div>
         <DrawerFooter>
           <Button disabled={!canSave} onClick={() => void save()} className="h-14 rounded-2xl text-base font-bold">

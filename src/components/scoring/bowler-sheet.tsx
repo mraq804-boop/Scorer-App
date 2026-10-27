@@ -61,7 +61,11 @@ export function BowlerSheet({
       setError(parsed.error.issues[0]?.message);
       return;
     }
-    const choice = chooseTypedPlayer(state, team, parsed.data, squad);
+    const choice = chooseTypedPlayer(state, team, parsed.data, xi);
+    if (choice === "ambiguous") {
+      setError(t("squad.error.ambiguousName", { name: parsed.data }));
+      return;
+    }
     bowl(choice.id, choice.drafts);
   }
 

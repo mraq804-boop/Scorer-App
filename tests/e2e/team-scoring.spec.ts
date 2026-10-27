@@ -124,6 +124,12 @@ test("players who share a name are told apart in the next batter list", async ({
   await wicket(page, "Bowled");
   const picks = nextBatter(page).getByRole("group", { name: "Playing XI" });
   await expect(picks.getByRole("button")).toHaveText(["Ali (1)", "Ali (2)"]);
+
+  const sheet = nextBatter(page);
+  await sendIn(page, "ali");
+  await expect(sheet.getByText("More than one player is called ali. Pick the right one from the list.")).toBeVisible();
+  expect(await eventsOf(page, matchId, "batter_in")).toHaveLength(0);
+
   await picks.getByRole("button", { name: "Ali (2)" }).click();
   await expect(page.getByTestId("striker")).toContainText("Ali");
 
@@ -157,6 +163,38 @@ test("a bowler picked from the XI keeps the squad id, and a bowler outside it ca
   expect(added.filter((entry) => entry.id === BILAL)).toHaveLength(1);
 });
 
+test("a typed bowler name that two players share asks for a tap instead of guessing", async ({ page }) => {
+  const first = "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const second = "22222222-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  await openWithTeam(
+    page,
+    team({
+      squad: [player(first, "Ali", "bowler"), player(second, "Ali", "bowler"), player(HAMZA, "Hamza"), player(USMAN, "Usman")],
+    }),
+  );
+  await opponent(page).fill("Tigers");
+  await page.getByRole("radio", { name: "Bowl", exact: true }).check();
+  await tick(page, /^Ali \(1\)/, /^Ali \(2\)/, /^Hamza\b/, /^Usman\b/);
+  await page.getByLabel("Striker", { exact: true }).fill("Kamran");
+  await page.getByLabel("Non-striker", { exact: true }).fill("Zain");
+  await page.getByLabel("Opening bowler", { exact: true }).selectOption({ label: "Ali (1)" });
+  await page.getByRole("button", { name: "Start match" }).click();
+  await expect(score(page)).toHaveText("0/0 (0)");
+  const matchId = new URL(page.url()).searchParams.get("m") ?? "";
+  await runs(page, 0, 0, 0, 0, 0, 0);
+
+  const sheet = page.getByRole("dialog", { name: "Next bowler" });
+  await expect(sheet.getByRole("group", { name: "Playing XI" }).getByRole("button")).toHaveText(["Ali (2)", "Hamza", "Usman"]);
+  await sheet.getByLabel("Bowler's name").fill("Ali");
+  await sheet.getByRole("button", { name: "Bowl", exact: true }).click();
+  await expect(sheet.getByText("More than one player is called Ali. Pick the right one from the list.")).toBeVisible();
+  expect(await eventsOf(page, matchId, "bowler_changed")).toHaveLength(0);
+
+  await sheet.getByRole("button", { name: /^Ali(?! \()/ }).click();
+  await expect(sheet).toBeHidden();
+  expect((await eventsOf(page, matchId, "bowler_changed")).map((event) => event.player)).toEqual([first]);
+});
+
 test("the opponents' bowler is typed even in a team match", async ({ page }) => {
   await startTeamMatch(page, "batting");
   await runs(page, 0, 0, 0, 0, 0, 0);
@@ -172,7 +210,8 @@ test("a catch by an XI fielder stores the fielder's id, and the opponents' next 
   const how = page.getByRole("dialog", { name: "How out?" });
   const fielder = how.getByLabel("Fielder (optional)");
   await expect(fielder).toHaveJSProperty("tagName", "SELECT");
-  await expect(fielder.getByRole("option")).toHaveText(["No fielder", "Ali", "Hamza", "Usman", "Bilal"]);
+  await expect(fielder.getByRole("option")).toHaveText(["No fielder", "Ali", "Hamza", "Usman", "Bilal", "Someone else"]);
+  await expect(how.getByLabel("Fielder's name")).toHaveCount(0);
   await fielder.selectOption({ label: "Bilal" });
   await how.getByRole("button", { name: "Out", exact: true }).click();
 
@@ -194,6 +233,40 @@ test("caught and bowled records the bowler's id as the fielder", async ({ page }
   const [ball] = await eventsOf(page, matchId, "delivery");
   expect(ball?.bowler).toBe(HAMZA);
   expect(ball?.wicket).toMatchObject({ kind: "caught", fielderName: "Hamza", fielderId: HAMZA });
+});
+
+test("a substitute fielder who is not in the XI is typed under Someone else", async ({ page }) => {
+  const matchId = await startTeamMatch(page, "fielding");
+  await wicket(page, "Caught");
+  const how = page.getByRole("dialog", { name: "How out?" });
+  await how.getByLabel("Fielder (optional)").selectOption({ label: "Someone else" });
+  await how.getByLabel("Fielder's name").fill("Imran Sub");
+  await how.getByRole("button", { name: "Out", exact: true }).click();
+  await sendIn(page, "Faisal");
+  await expect(score(page)).toHaveText("0/1 (0.1)");
+
+  const [ball] = await eventsOf(page, matchId, "delivery");
+  expect(ball?.wicket).toMatchObject({ kind: "caught", fielderName: "Imran Sub" });
+  expect(ball?.wicket).not.toHaveProperty("fielderId");
+});
+
+test("Someone else with no name records no fielder, and picking an XI player again drops the typed name", async ({ page }) => {
+  const matchId = await startTeamMatch(page, "fielding");
+  await wicket(page, "Stumped");
+  const how = page.getByRole("dialog", { name: "How out?" });
+  const fielder = how.getByLabel("Fielder (optional)");
+  await fielder.selectOption({ label: "Someone else" });
+  await how.getByLabel("Fielder's name").fill("Imran Sub");
+  await fielder.selectOption({ label: "Usman" });
+  await expect(how.getByLabel("Fielder's name")).toHaveCount(0);
+  await fielder.selectOption({ label: "Someone else" });
+  await expect(how.getByLabel("Fielder's name")).toHaveValue("");
+  await how.getByRole("button", { name: "Out", exact: true }).click();
+  await sendIn(page, "Faisal");
+
+  const [ball] = await eventsOf(page, matchId, "delivery");
+  expect(ball?.wicket).toMatchObject({ kind: "stumped", fielderName: null });
+  expect(ball?.wicket).not.toHaveProperty("fielderId");
 });
 
 test("a run out and a stumping offer the XI too, and no fielder keeps no id", async ({ page }) => {
@@ -260,6 +333,47 @@ test("editing a ball changes the fielder's id, and taking the fielder off clears
   await expect(fielder).toHaveValue("");
 });
 
+test("a team-fielded ball with a typed fielder shows the name when edited, and it can be changed or cleared", async ({ page }) => {
+  const matchId = await startTeamMatch(page, "fielding");
+  await out(page, "Caught", "Bilal");
+  await sendIn(page, "Faisal");
+
+  await chip(page, 0).click();
+  const sheet = page.getByRole("dialog", { name: "Edit ball 0.1" });
+  const fielder = sheet.getByLabel("Fielder (optional)");
+  const typed = sheet.getByLabel("Fielder's name");
+  const save = sheet.getByRole("button", { name: "Save" });
+  await fielder.selectOption({ label: "Someone else" });
+  await typed.fill("Imran Sub");
+  await save.click();
+  await expect(sheet).toBeHidden();
+
+  await chip(page, 0).click();
+  await expect(fielder.locator("option:checked")).toHaveText("Someone else");
+  await expect(typed).toHaveValue("Imran Sub");
+  await expect(save).toBeDisabled();
+  await typed.fill("Imran Khan Sub");
+  await save.click();
+  await expect(sheet).toBeHidden();
+
+  await chip(page, 0).click();
+  await expect(typed).toHaveValue("Imran Khan Sub");
+  await fielder.selectOption({ label: "No fielder" });
+  await expect(typed).toHaveCount(0);
+  await save.click();
+  await expect(sheet).toBeHidden();
+
+  await chip(page, 0).click();
+  await expect(fielder.locator("option:checked")).toHaveText("No fielder");
+
+  const patches = (await eventsOf(page, matchId, "correct")).map((event) => event.patch.wicket);
+  expect(patches).toEqual([
+    { kind: "caught", fielderName: "Imran Sub", fielderId: null },
+    { kind: "caught", fielderName: "Imran Khan Sub", fielderId: null },
+    { kind: "caught", fielderName: null, fielderId: null },
+  ]);
+});
+
 test("editing a ball the opponents caught keeps a typed fielder and sends a null id", async ({ page }) => {
   const matchId = await startTeamMatch(page, "batting");
   await wicket(page, "Caught");
@@ -314,6 +428,50 @@ test("the second innings is started from the XI and reuses a player who already 
   const added = (await eventsOf(page, matchId, "player_added")).map((event) => event.player.id);
   expect(added.filter((id) => id === HAMZA)).toHaveLength(1);
   expect(added.filter((id) => id === ALI)).toHaveLength(1);
+});
+
+test("a player outside the XI can open the second innings, and a typed XI name keeps the squad id", async ({ page }) => {
+  const matchId = await startTeamMatch(page, "fielding");
+  await runs(page, 1);
+  await page.getByRole("button", { name: "Match menu" }).click();
+  await page.getByRole("dialog", { name: "Match menu" }).getByRole("button", { name: "End innings", exact: true }).click();
+  await page.getByRole("alertdialog", { name: "End this innings now?" }).getByRole("button", { name: "End innings" }).click();
+
+  const sheet = page.getByRole("dialog", { name: "Start innings 2" });
+  await expect(sheet.getByLabel("Striker name")).toHaveCount(0);
+  await sheet.getByLabel("Striker", { exact: true }).selectOption({ label: "Someone else" });
+  await sheet.getByLabel("Striker name").fill("usman");
+  await sheet.getByLabel("Non-striker", { exact: true }).selectOption({ label: "Someone else" });
+  await sheet.getByLabel("Non-striker name").fill("Saad");
+  await sheet.getByLabel("Opening bowler", { exact: true }).fill("Kamran");
+  await sheet.getByRole("button", { name: "Start innings" }).click();
+  await expect(sheet).toBeHidden();
+
+  const [, second] = await eventsOf(page, matchId, "innings_started");
+  expect(second).toMatchObject({ innings: 2, battingTeam: "A", striker: USMAN });
+  const saad = (await eventsOf(page, matchId, "player_added")).map((event) => event.player).find((entry) => entry.name === "Saad");
+  expect(saad).toMatchObject({ team: "A" });
+  expect(second?.nonStriker).toBe(saad?.id);
+  expect([ALI, HAMZA, USMAN, BILAL]).not.toContain(saad?.id);
+});
+
+test("the second innings openers need a name when Someone else is picked, and the same player twice is refused", async ({ page }) => {
+  await startTeamMatch(page, "fielding");
+  await page.getByRole("button", { name: "Match menu" }).click();
+  await page.getByRole("dialog", { name: "Match menu" }).getByRole("button", { name: "End innings", exact: true }).click();
+  await page.getByRole("alertdialog", { name: "End this innings now?" }).getByRole("button", { name: "End innings" }).click();
+
+  const sheet = page.getByRole("dialog", { name: "Start innings 2" });
+  await sheet.getByLabel("Striker", { exact: true }).selectOption({ label: "Ali" });
+  await sheet.getByLabel("Non-striker", { exact: true }).selectOption({ label: "Someone else" });
+  await sheet.getByLabel("Opening bowler", { exact: true }).fill("Kamran");
+  await sheet.getByRole("button", { name: "Start innings" }).click();
+  await expect(sheet.getByText("Enter a name")).toBeVisible();
+
+  await sheet.getByLabel("Non-striker name").fill("ALI");
+  await sheet.getByRole("button", { name: "Start innings" }).click();
+  await expect(sheet.getByText("Pick two different batters")).toBeVisible();
+  await expect(sheet).toBeVisible();
 });
 
 test("the second innings openers are typed when the opponents bat", async ({ page }) => {

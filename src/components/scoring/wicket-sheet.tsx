@@ -1,12 +1,12 @@
 "use client";
 
 import { ChevronLeft } from "lucide-react";
-import { useId, useState } from "react";
+import { useState } from "react";
 import { WITH_FIELDER } from "@/components/scoring/ball-patch";
-import { NameField, NameSuggestions } from "@/components/scoring/name-field";
+import { FielderField } from "@/components/scoring/fielder-field";
+import type { FielderValue } from "@/components/scoring/fielder-field";
 import { fielderOptions, suggestNames, xiFor } from "@/components/scoring/player-drafts";
 import type { MatchTeam } from "@/components/scoring/player-drafts";
-import { XiSelect, squadLabels } from "@/components/scoring/team-xi-picker";
 import { SegmentedControl } from "@/components/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
@@ -48,22 +48,14 @@ export function WicketSheet({ state, innings, matchTeam, kind, busy, onClose, on
   const [dismissal, setDismissal] = useState<AvailableDismissal | null>(null);
   const [batter, setBatter] = useState(batters[0] ?? "");
   const [runs, setRuns] = useState(0);
-  const [fielder, setFielder] = useState("");
-  const [squadFielder, setSquadFielder] = useState("");
+  const [fielder, setFielder] = useState<FielderValue>({ fielder: "", fielderId: null });
   const [fielderError, setFielderError] = useState<string>();
-  const fieldersId = useId();
   const squad = fielderOptions(xiFor(matchTeam, innings.bowlingTeam), state, innings.bowler);
-  const labels = squadLabels(squad);
 
   async function confirm(chosen: AvailableDismissal) {
     let fielderName: string | null = null;
-    let fielderId: string | undefined;
-    if (WITH_FIELDER.has(chosen) && squad.length > 0) {
-      const picked = squad.find((player) => player.id === squadFielder);
-      fielderName = picked?.name ?? null;
-      fielderId = picked?.id;
-    } else if (WITH_FIELDER.has(chosen) && fielder.trim() !== "") {
-      const parsed = nameSchema.safeParse(fielder);
+    if (WITH_FIELDER.has(chosen) && fielder.fielder.trim() !== "") {
+      const parsed = nameSchema.safeParse(fielder.fielder);
       if (!parsed.success) {
         setFielderError(parsed.error.issues[0]?.message);
         return;
@@ -78,7 +70,7 @@ export function WicketSheet({ state, innings, matchTeam, kind, busy, onClose, on
             kind: chosen,
             playerOut: chosen === "run_out" ? batter : undefined,
             fielderName,
-            ...(fielderId === undefined ? {} : { fielderId }),
+            ...(fielderName === null || fielder.fielderId === null ? {} : { fielderId: fielder.fielderId }),
           },
         });
     if (saved) onClose();
@@ -129,33 +121,18 @@ export function WicketSheet({ state, innings, matchTeam, kind, busy, onClose, on
               {dismissal === "run_out" && (
                 <SegmentedControl label={t("wicket.runs")} value={runs} options={RUNS_COMPLETED} onChange={setRuns} />
               )}
-              {WITH_FIELDER.has(dismissal) &&
-                (squad.length > 0 ? (
-                  <XiSelect
-                    name="fielder"
-                    label={t("wicket.fielder")}
-                    value={squadFielder}
-                    players={squad}
-                    labels={labels}
-                    empty={t("wicket.noFielder")}
-                    onChange={setSquadFielder}
-                  />
-                ) : (
-                  <>
-                    <NameField
-                      name="fielder"
-                      label={t("wicket.fielder")}
-                      value={fielder}
-                      error={fielderError}
-                      list={fieldersId}
-                      onChange={(value) => {
-                        setFielder(value);
-                        setFielderError(undefined);
-                      }}
-                    />
-                    <NameSuggestions id={fieldersId} names={suggestNames(state, innings.bowlingTeam, [])} />
-                  </>
-                ))}
+              {WITH_FIELDER.has(dismissal) && (
+                <FielderField
+                  squad={squad}
+                  suggestions={suggestNames(state, innings.bowlingTeam, [])}
+                  value={fielder}
+                  error={fielderError}
+                  onChange={(value) => {
+                    setFielder(value);
+                    setFielderError(undefined);
+                  }}
+                />
+              )}
             </div>
             <DrawerFooter>
               <Button

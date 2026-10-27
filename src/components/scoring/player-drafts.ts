@@ -41,11 +41,23 @@ export function chooseTypedPlayer(
   team: TeamSide,
   typed: string,
   xi: readonly XiPlayer[],
-  canReuse?: PlayerFilter,
-): PlayerChoice {
-  const squad = xi.find((player) => sameName(player.name, typed.trim()));
-  if (squad === undefined) return choosePlayer(state, team, typed, undefined, canReuse);
-  return choosePlayer(state, team, squad.name, squad.id);
+  canReuse: PlayerFilter = () => true,
+): PlayerChoice | "ambiguous" {
+  if (xi.length === 0) return choosePlayer(state, team, typed, undefined, canReuse);
+  const wanted = typed.trim();
+  const inMatch = Object.values(state.players).filter(
+    (player) => player.team === team && sameName(player.name, wanted) && canReuse(player),
+  );
+  const squad = xi.filter(
+    (member) =>
+      sameName(member.name, wanted) &&
+      !inMatch.some((known) => known.id === member.id) &&
+      canReuse({ id: member.id, name: member.name, team }),
+  );
+  if (inMatch.length + squad.length > 1) return "ambiguous";
+  const [only] = squad;
+  if (only === undefined) return choosePlayer(state, team, wanted, undefined, canReuse);
+  return choosePlayer(state, team, only.name, only.id);
 }
 
 export function fielderOptions(xi: readonly XiPlayer[], state: MatchState, bowlerId: string | null): XiPlayer[] {

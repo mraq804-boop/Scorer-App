@@ -57,10 +57,14 @@ export function BatterSheet({ state, innings, matchTeam, recent, busy, undo, onR
       setError(t("batter.alreadyIn", { name: batting.name }));
       return;
     }
-    const choice = chooseTypedPlayer(state, team, parsed.data, squad, (player) => {
+    const choice = chooseTypedPlayer(state, team, parsed.data, xi, (player) => {
       const line = lines.get(player.id);
       return line === undefined || (line.retiredHurt && line.out === null);
     });
+    if (choice === "ambiguous") {
+      setError(t("squad.error.ambiguousName", { name: parsed.data }));
+      return;
+    }
     sendIn(choice.id, choice.drafts);
   }
 
