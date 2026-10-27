@@ -5,6 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { useCallback, useState } from "react";
 import { BallListSheet } from "@/components/scoring/ball-list-sheet";
 import { BowlerSheet } from "@/components/scoring/bowler-sheet";
+import type { MatchTeam } from "@/components/scoring/player-drafts";
 import { RetireSheet } from "@/components/scoring/retire-sheet";
 import { SettingsSheet } from "@/components/scoring/settings-sheet";
 import { Scorecard } from "@/components/scorecard/scorecard";
@@ -29,7 +30,8 @@ type Panel = "menu" | "bowler" | "retire" | "balls" | "settings" | "end" | "scor
 type OnRecord = (drafts: EventDraft[]) => Promise<boolean>;
 
 type MatchMenuProps = {
-  local: Pick<LocalMatch, "id" | "code" | "syncedSeq" | "team">;
+  local: Pick<LocalMatch, "id" | "code" | "syncedSeq">;
+  matchTeam?: MatchTeam;
   state: MatchState;
   blocked: boolean;
   busy: boolean;
@@ -129,7 +131,7 @@ function ShareSheet({ local, state, onClose }: { local: MatchMenuProps["local"];
   );
 }
 
-export function MatchMenu({ local, state, blocked, busy, recent, onRecord, onEditBall }: MatchMenuProps) {
+export function MatchMenu({ local, matchTeam, state, blocked, busy, recent, onRecord, onEditBall }: MatchMenuProps) {
   const [panel, setPanel] = useState<Panel | null>(null);
   const live = currentInnings(state);
   const locked = blocked || busy || live === null;
@@ -188,7 +190,7 @@ export function MatchMenu({ local, state, blocked, busy, recent, onRecord, onEdi
         <BowlerSheet
           state={state}
           innings={live}
-          matchTeam={local.team}
+          matchTeam={matchTeam}
           recent={recent}
           busy={busy}
           title={t("menu.changeBowler")}

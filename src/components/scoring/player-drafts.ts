@@ -3,8 +3,8 @@ import type { LocalMatch } from "@/lib/local/db";
 import { sameName } from "@/lib/validation/match-setup";
 
 export type PlayerChoice = { id: string; drafts: EventDraft[] };
-export type MatchTeam = NonNullable<LocalMatch["team"]>;
 export type XiPlayer = { id: string; name: string };
+export type MatchTeam = NonNullable<LocalMatch["team"]> & { bench?: readonly XiPlayer[] };
 
 type PlayerFilter = (player: Player) => boolean;
 
@@ -36,21 +36,36 @@ export function xiFor(team: MatchTeam | undefined, side: TeamSide): readonly XiP
   return team?.side === side ? team.xi : NO_XI;
 }
 
+export function benchFor(team: MatchTeam | undefined, side: TeamSide): readonly XiPlayer[] {
+  return team?.side === side ? (team.bench ?? NO_XI) : NO_XI;
+}
+
+export function joiningXi(drafts: readonly EventDraft[], team: MatchTeam | undefined): XiPlayer[] {
+  const bench = team?.bench ?? NO_XI;
+  return drafts.flatMap((draft) =>
+    draft.type === "player_added" && draft.player.team === team?.side && bench.some((member) => member.id === draft.player.id)
+      ? [{ id: draft.player.id, name: draft.player.name }]
+      : [],
+  );
+}
+
 export function chooseTypedPlayer(
   state: MatchState,
   team: TeamSide,
   typed: string,
   xi: readonly XiPlayer[],
   canReuse: PlayerFilter = () => true,
+  bench: readonly XiPlayer[] = NO_XI,
 ): PlayerChoice | "ambiguous" {
   if (xi.length === 0) return choosePlayer(state, team, typed, undefined, canReuse);
   const wanted = typed.trim();
   const inMatch = Object.values(state.players).filter(
     (player) => player.team === team && sameName(player.name, wanted) && canReuse(player),
   );
-  const squad = xi.filter(
-    (member) =>
+  const squad = [...xi, ...bench].filter(
+    (member, index, members) =>
       sameName(member.name, wanted) &&
+      members.findIndex((other) => other.id === member.id) === index &&
       !inMatch.some((known) => known.id === member.id) &&
       canReuse({ id: member.id, name: member.name, team }),
   );

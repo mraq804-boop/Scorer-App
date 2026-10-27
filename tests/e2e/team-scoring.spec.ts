@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import type { LocalMatch, StoredEvent } from "@/lib/local/db";
 import { runs, score, sendIn, startMatch, wicket } from "./support/scoring";
-import { ALI, BILAL, HAMZA, USMAN, openWithTeam, player, readStore, team, xiGroup } from "./support/team";
+import { ALI, BILAL, HAMZA, RAZA, USMAN, openWithTeam, player, readStore, team, xiGroup } from "./support/team";
 
 type Role = "batting" | "fielding";
 
@@ -512,4 +512,41 @@ test("a match without a team scores exactly as before", async ({ page }) => {
   expect(ball?.wicket).not.toHaveProperty("fielderId");
   const matches = await readStore<LocalMatch>(page, "matches");
   expect(matches.find((match) => match.id === matchId)).not.toHaveProperty("team");
+});
+
+const ZAIN = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+
+async function storedXi(page: Page, matchId: string): Promise<string[]> {
+  const matches = await readStore<LocalMatch>(page, "matches");
+  return matches.find((match) => match.id === matchId)?.team?.xi.map((member) => member.id) ?? [];
+}
+
+test("a squad player left out of the XI who is typed in as a batter counts for the team", async ({ page }) => {
+  const matchId = await startTeamMatch(page, "batting", team({ squad: [...team().squad, player(ZAIN, "Zain", "bowler")] }));
+  await wicket(page, "Bowled");
+  await sendIn(page, " zain ");
+  await expect(page.getByTestId("striker")).toContainText("Zain");
+
+  const added = (await eventsOf(page, matchId, "player_added")).map((event) => event.player);
+  expect(added.filter((entry) => entry.name === "Zain")).toEqual([{ id: ZAIN, name: "Zain", team: "A" }]);
+  await expect.poll(() => storedXi(page, matchId)).toEqual([ALI, HAMZA, USMAN, BILAL, ZAIN]);
+});
+
+test("a squad player left out of the XI who is typed in as a bowler counts, an inactive one doesn't", async ({ page }) => {
+  const matchId = await startTeamMatch(page, "fielding", team({ squad: [...team().squad, player(ZAIN, "Zain", "bowler")] }));
+  await runs(page, 0, 0, 0, 0, 0, 0);
+  const sheet = page.getByRole("dialog", { name: "Next bowler" });
+  await sheet.getByLabel("Bowler's name").fill("Zain");
+  await sheet.getByRole("button", { name: "Bowl", exact: true }).click();
+  await expect(sheet).toBeHidden();
+
+  await runs(page, 0, 0, 0, 0, 0, 0);
+  await sheet.getByLabel("Bowler's name").fill("Raza");
+  await sheet.getByRole("button", { name: "Bowl", exact: true }).click();
+  await expect(sheet).toBeHidden();
+
+  const changes = (await eventsOf(page, matchId, "bowler_changed")).map((event) => event.player);
+  expect(changes[0]).toBe(ZAIN);
+  expect(changes[1]).not.toBe(RAZA);
+  await expect.poll(() => storedXi(page, matchId)).toEqual([ALI, HAMZA, USMAN, BILAL, ZAIN]);
 });

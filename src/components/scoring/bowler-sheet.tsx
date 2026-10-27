@@ -3,7 +3,7 @@
 import { useId, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { NameField, NameSuggestions } from "@/components/scoring/name-field";
-import { choosePlayer, chooseTypedPlayer, previousBowlers, suggestNames, xiFor } from "@/components/scoring/player-drafts";
+import { benchFor, choosePlayer, chooseTypedPlayer, previousBowlers, suggestNames, xiFor } from "@/components/scoring/player-drafts";
 import type { MatchTeam, XiPlayer } from "@/components/scoring/player-drafts";
 import { squadLabels } from "@/components/scoring/team-xi-picker";
 import { Button } from "@/components/ui/button";
@@ -61,7 +61,7 @@ export function BowlerSheet({
       setError(parsed.error.issues[0]?.message);
       return;
     }
-    const choice = chooseTypedPlayer(state, team, parsed.data, xi);
+    const choice = chooseTypedPlayer(state, team, parsed.data, xi, undefined, benchFor(matchTeam, team));
     if (choice === "ambiguous") {
       setError(t("squad.error.ambiguousName", { name: parsed.data }));
       return;

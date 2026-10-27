@@ -1,5 +1,6 @@
 "use client";
 
+import { useLiveQuery } from "dexie-react-hooks";
 import { Undo2 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -16,6 +17,8 @@ import { BowlerSheet } from "@/components/scoring/bowler-sheet";
 import { EditBallSheet } from "@/components/scoring/edit-ball-sheet";
 import { ExtrasToggles, NO_EXTRAS } from "@/components/scoring/extras-toggles";
 import { MatchMenu } from "@/components/scoring/match-menu";
+import { joiningXi } from "@/components/scoring/player-drafts";
+import type { MatchTeam } from "@/components/scoring/player-drafts";
 import { RunPad } from "@/components/scoring/run-pad";
 import { ScoreHeader } from "@/components/scoring/score-header";
 import { StartInningsSheet } from "@/components/scoring/start-innings-sheet";
@@ -25,9 +28,11 @@ import { useMatch } from "@/hooks/use-match";
 import { t } from "@/lib/i18n";
 import { formatResult, formatScoreLine } from "@/lib/i18n/cricket";
 import { getLocalDb } from "@/lib/local/db";
-import { recentPlayerNames } from "@/lib/local/matches";
+import type { LocalMatch } from "@/lib/local/db";
+import { addToMatchXi, recentPlayerNames } from "@/lib/local/matches";
 import { currentInnings, deliveryDraft, undoTargets } from "@/lib/scoring";
-import type { BallInput, MatchEvent } from "@/lib/scoring";
+import type { BallInput, EventDraft, MatchEvent } from "@/lib/scoring";
+import { getCachedTeam } from "@/lib/team/local";
 import { cn } from "@/lib/utils";
 
 function inningsEndUndone(events: readonly MatchEvent[]): boolean {
@@ -62,8 +67,20 @@ function Message({ matchId, children }: { matchId: string; children: ReactNode }
   );
 }
 
+function useMatchTeam(team: LocalMatch["team"]): MatchTeam | undefined {
+  const cached = useLiveQuery(() => getCachedTeam(getLocalDb()), []);
+  return useMemo(() => {
+    if (team === undefined || cached?.id !== team.id) return team;
+    const bench = cached.squad
+      .filter((player) => player.active && !team.xi.some((member) => member.id === player.id))
+      .map(({ id, name }) => ({ id, name }));
+    return { ...team, bench };
+  }, [team, cached]);
+}
+
 function MatchScreen({ matchId }: { matchId: string }) {
   const { local, events, state, prompt, record, loaded, busy, wroteLast } = useMatch(matchId);
+  const matchTeam = useMatchTeam(local?.team);
   const recent = useRecentNames();
   const [extras, setExtras] = useState(NO_EXTRAS);
   const [wicketOpen, setWicketOpen] = useState(false);
@@ -139,7 +156,12 @@ function MatchScreen({ matchId }: { matchId: string }) {
   );
   const prompted = !blocked && innings !== null && state.status === "in_progress" ? prompt?.kind : undefined;
   const editing = blocked || editingId === null ? null : findBall(events, state, editingId);
-  const sheet = { state, recent, busy, undo: sheetUndo, onRecord: record };
+  const recordPlay = async (drafts: EventDraft[]) => {
+    const joining = joiningXi(drafts, matchTeam);
+    if (joining.length > 0) await addToMatchXi(getLocalDb(), matchId, joining).catch(() => undefined);
+    return record(drafts);
+  };
+  const sheet = { state, recent, busy, undo: sheetUndo, onRecord: recordPlay };
 
   return (
     <div data-match-id={matchId} className="flex flex-1 flex-col gap-4 pb-4">
@@ -150,11 +172,12 @@ function MatchScreen({ matchId }: { matchId: string }) {
         actions={
           <MatchMenu
             local={local}
+            matchTeam={matchTeam}
             state={state}
             blocked={blocked}
             busy={busy}
             recent={recent}
-            onRecord={record}
+            onRecord={recordPlay}
             onEditBall={setEditingId}
           />
         }
@@ -225,20 +248,20 @@ function MatchScreen({ matchId }: { matchId: string }) {
       </div>
 
       {prompted === "choose_batter" && innings !== null && (
-        <BatterSheet innings={innings} matchTeam={local.team} {...sheet} />
+        <BatterSheet innings={innings} matchTeam={matchTeam} {...sheet} />
       )}
       {prompted === "choose_bowler" && innings !== null && (
-        <BowlerSheet innings={innings} matchTeam={local.team} {...sheet} />
+        <BowlerSheet innings={innings} matchTeam={matchTeam} {...sheet} />
       )}
       {prompted === "all_out" && innings !== null && <AllOutDialog innings={innings} {...sheet} />}
       {!blocked && prompt?.kind === "start_innings" && (
-        <StartInningsSheet innings={prompt.innings} matchTeam={local.team} {...sheet} />
+        <StartInningsSheet innings={prompt.innings} matchTeam={matchTeam} {...sheet} />
       )}
       {editing !== null && (
         <EditBallSheet
           state={state}
           ball={editing}
-          matchTeam={local.team}
+          matchTeam={matchTeam}
           busy={busy}
           onClose={() => setEditingId(null)}
           onSave={(patch) => record([{ type: "correct", target: editing.event.id, patch }])}
@@ -248,7 +271,7 @@ function MatchScreen({ matchId }: { matchId: string }) {
         <WicketSheet
           state={state}
           innings={innings}
-          matchTeam={local.team}
+          matchTeam={matchTeam}
           kind={extras.kind}
           busy={busy}
           onClose={() => setWicketOpen(false)}

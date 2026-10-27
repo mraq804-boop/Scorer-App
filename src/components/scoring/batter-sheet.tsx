@@ -3,7 +3,7 @@
 import { useId, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { NameField, NameSuggestions } from "@/components/scoring/name-field";
-import { choosePlayer, chooseTypedPlayer, suggestNames, xiFor } from "@/components/scoring/player-drafts";
+import { benchFor, choosePlayer, chooseTypedPlayer, suggestNames, xiFor } from "@/components/scoring/player-drafts";
 import type { MatchTeam, XiPlayer } from "@/components/scoring/player-drafts";
 import { squadLabels } from "@/components/scoring/team-xi-picker";
 import { Button } from "@/components/ui/button";
@@ -57,10 +57,17 @@ export function BatterSheet({ state, innings, matchTeam, recent, busy, undo, onR
       setError(t("batter.alreadyIn", { name: batting.name }));
       return;
     }
-    const choice = chooseTypedPlayer(state, team, parsed.data, xi, (player) => {
-      const line = lines.get(player.id);
-      return line === undefined || (line.retiredHurt && line.out === null);
-    });
+    const choice = chooseTypedPlayer(
+      state,
+      team,
+      parsed.data,
+      xi,
+      (player) => {
+        const line = lines.get(player.id);
+        return line === undefined || (line.retiredHurt && line.out === null);
+      },
+      benchFor(matchTeam, team),
+    );
     if (choice === "ambiguous") {
       setError(t("squad.error.ambiguousName", { name: parsed.data }));
       return;

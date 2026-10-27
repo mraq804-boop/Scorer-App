@@ -3,7 +3,7 @@
 import { useId, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { NameField, NameSuggestions, TeamCaption } from "@/components/scoring/name-field";
-import { choosePlayer, chooseTypedPlayer, suggestNames, xiFor } from "@/components/scoring/player-drafts";
+import { benchFor, choosePlayer, chooseTypedPlayer, suggestNames, xiFor } from "@/components/scoring/player-drafts";
 import type { MatchTeam, PlayerChoice } from "@/components/scoring/player-drafts";
 import { XiSelect, squadLabels } from "@/components/scoring/team-xi-picker";
 import { Button } from "@/components/ui/button";
@@ -113,7 +113,7 @@ export function StartInningsSheet({ state, innings, matchTeam, recent, busy, und
         next[name] = parsed.error.issues[0]?.message;
         return undefined;
       }
-      const choice = chooseTypedPlayer(state, side, parsed.data, squad);
+      const choice = chooseTypedPlayer(state, side, parsed.data, squad, undefined, benchFor(matchTeam, side));
       if (choice === "ambiguous") {
         next[name] = t("squad.error.ambiguousName", { name: parsed.data });
         return undefined;

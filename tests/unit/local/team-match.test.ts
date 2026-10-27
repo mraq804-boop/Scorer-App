@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it } from "vitest";
 import { defaultRules, replay } from "@/lib/scoring";
 import { LocalDb } from "@/lib/local/db";
-import { createLocalMatch, loadEvents } from "@/lib/local/matches";
+import { addToMatchXi, createLocalMatch, loadEvents } from "@/lib/local/matches";
 import type { MatchSetup } from "@/lib/local/matches";
 import { squadPlayer } from "../../helpers/team";
 
@@ -136,5 +136,30 @@ describe("createLocalMatch without a team", () => {
     expect(new Set(added.map((player) => player.id)).size).toBe(3);
     expect(Object.keys(match)).not.toContain("team");
     expect(Object.keys((await db.matches.get(match.id))!)).not.toContain("team");
+  });
+});
+
+describe("addToMatchXi", () => {
+  it("adds squad players to the match's XI once, keeping the order", async () => {
+    const db = freshDb();
+    const { ali, usman, hamza, spare } = squad();
+    const match = await createLocalMatch(
+      db,
+      setup({ striker: ali, nonStriker: usman, bowler: "Kamran", team: { id: TEAM_ID, fixtureId: null, xi: [ali, usman, hamza] } }),
+    );
+
+    await addToMatchXi(db, match.id, [spare]);
+    await addToMatchXi(db, match.id, [spare, ali]);
+
+    expect((await db.matches.get(match.id))?.team?.xi).toEqual([ali, usman, hamza, spare]);
+  });
+
+  it("leaves a match without a team alone", async () => {
+    const db = freshDb();
+    const match = await createLocalMatch(db, setup());
+
+    await addToMatchXi(db, match.id, [squad().spare]);
+
+    expect((await db.matches.get(match.id))?.team).toBeUndefined();
   });
 });

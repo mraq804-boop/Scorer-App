@@ -130,6 +130,17 @@ export async function createLocalMatch(db: LocalDb, setup: MatchSetup): Promise<
   return db.transaction("rw", db.matches, db.events, async () => (await commit(db, base, [], drafts)).match);
 }
 
+export async function addToMatchXi(db: LocalDb, matchId: string, players: readonly { id: string; name: string }[]): Promise<void> {
+  await db.transaction("rw", db.matches, async () => {
+    const match = await db.matches.get(matchId);
+    if (match?.team === undefined) return;
+    const missing = players.filter((player) => !match.team?.xi.some((member) => member.id === player.id));
+    if (missing.length === 0) return;
+    const xi = [...match.team.xi, ...missing.map(({ id, name }) => ({ id, name }))];
+    await db.matches.update(matchId, { team: { ...match.team, xi } });
+  });
+}
+
 export async function getDeviceId(db: LocalDb): Promise<string> {
   return db.transaction("rw", db.meta, async () => {
     const existing = await db.meta.get("deviceId");

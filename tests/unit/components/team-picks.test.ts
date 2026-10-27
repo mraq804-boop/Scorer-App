@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { buildPatch, fieldsOf, findBall, isUnchanged } from "@/components/scoring/ball-patch";
 import type { BallFields, EditableBall } from "@/components/scoring/ball-patch";
-import { chooseTypedPlayer, choosePlayer, fielderOptions, xiFor } from "@/components/scoring/player-drafts";
+import { benchFor, chooseTypedPlayer, choosePlayer, fielderOptions, joiningXi, xiFor } from "@/components/scoring/player-drafts";
 import type { MatchTeam, PlayerChoice } from "@/components/scoring/player-drafts";
 import { defaultRules } from "@/lib/scoring";
-import type { DeliveryEvent } from "@/lib/scoring";
+import type { DeliveryEvent, EventDraft } from "@/lib/scoring";
 import { TestMatch } from "../../helpers/match";
 
 const rules = defaultRules("tape", 10);
@@ -305,5 +305,47 @@ describe("editing a wicket's fielder on a team ball", () => {
     const ball = m.ball({ runs: 0, wicket: { kind: "caught", fielderName: "Zain" } });
     const { item } = editable(m, ball);
     expect(isUnchanged(buildPatch(fieldsOf(item), m.state.rules), item)).toBe(true);
+  });
+});
+
+describe("squad players left out of the XI", () => {
+  const anyone = () => true;
+
+  it("records a typed name of a squad player left out of the XI under his squad id", () => {
+    const m = new TestMatch();
+    expect(chooseTypedPlayer(m.state, "A", " zain ", [BILAL], anyone, [ZAIN, FAISAL])).toEqual({
+      id: ZAIN.id,
+      drafts: [{ type: "player_added", player: { id: ZAIN.id, name: "Zain", team: "A" } }],
+    });
+  });
+
+  it("refuses a name shared by an XI player and a left-out squad player", () => {
+    const m = new TestMatch();
+    expect(chooseTypedPlayer(m.state, "A", "bilal", [BILAL], anyone, [{ id: "squad-bilal-2", name: "Bilal" }])).toBe("ambiguous");
+  });
+
+  it("still gives a name nobody in the squad has a fresh id", () => {
+    const m = new TestMatch();
+    const choice = typed(chooseTypedPlayer(m.state, "A", "Kamran", [BILAL], anyone, [ZAIN]));
+    expect([BILAL.id, ZAIN.id]).not.toContain(choice.id);
+  });
+
+  it("offers the left-out squad only on the team's own side", () => {
+    const team = { ...teamOf(BILAL), bench: [ZAIN] };
+    expect(benchFor(team, "A")).toEqual([ZAIN]);
+    expect(benchFor(team, "B")).toEqual([]);
+    expect(benchFor(undefined, "A")).toEqual([]);
+  });
+
+  it("lists the left-out squad players that the drafts bring onto the team's side", () => {
+    const team = { ...teamOf(BILAL), bench: [ZAIN, FAISAL] };
+    const drafts: EventDraft[] = [
+      { type: "player_added", player: { id: ZAIN.id, name: "Zain", team: "A" } },
+      { type: "player_added", player: { id: "fresh-id", name: "Kamran", team: "A" } },
+      { type: "player_added", player: { id: FAISAL.id, name: "Faisal", team: "B" } },
+      { type: "batter_in", player: ZAIN.id },
+    ];
+    expect(joiningXi(drafts, team)).toEqual([ZAIN]);
+    expect(joiningXi(drafts, undefined)).toEqual([]);
   });
 });
