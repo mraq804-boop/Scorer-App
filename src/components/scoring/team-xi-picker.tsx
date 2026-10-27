@@ -5,20 +5,12 @@ import type { KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ROLES, ROLE_LABELS, SELECT_CLASS } from "@/components/team/form";
 import { t } from "@/lib/i18n";
 import { getLocalDb } from "@/lib/local/db";
 import type { SquadPlayer, SquadRole } from "@/lib/team";
 import { SquadAddError, addSquadPlayerOffline } from "@/lib/team/local";
 import type { SquadAddErrorCode } from "@/lib/team/local";
-
-const ROLE_LABELS: Record<SquadRole, string> = {
-  batter: t("squad.role.batter"),
-  bowler: t("squad.role.bowler"),
-  allrounder: t("squad.role.allrounder"),
-  keeper: t("squad.role.keeper"),
-};
-
-const ROLES = Object.keys(ROLE_LABELS) as SquadRole[];
 
 const ADD_ERRORS: Record<SquadAddErrorCode, string> = {
   no_team: t("squad.error.noTeam"),
@@ -26,9 +18,6 @@ const ADD_ERRORS: Record<SquadAddErrorCode, string> = {
   name_too_long: t("squad.error.nameTooLong"),
   squad_full: t("squad.error.full"),
 };
-
-const SELECT_CLASS =
-  "h-12 w-full min-w-0 rounded-xl border border-input bg-transparent px-3 text-base transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:bg-input/30 [&>option]:bg-background [&>option]:text-foreground";
 
 type Named = Pick<SquadPlayer, "id" | "name">;
 

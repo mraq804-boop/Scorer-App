@@ -4,7 +4,12 @@ import { PENDING_CLAIM_KEY } from "@/lib/sync/sync";
 
 const CLAIM_INVALID = "claim_invalid";
 
-export async function startGoogleSignIn(client: SupabaseClient, db: LocalDb, origin: string): Promise<void> {
+export async function startGoogleSignIn(
+  client: SupabaseClient,
+  db: LocalDb,
+  origin: string,
+  next: "/account" | "/team" = "/account",
+): Promise<void> {
   const { data, error: sessionError } = await client.auth.getSession();
   if (sessionError !== null) throw sessionError;
   if (data.session?.user.is_anonymous === true && (await db.matches.count()) > 0) {
@@ -15,7 +20,7 @@ export async function startGoogleSignIn(client: SupabaseClient, db: LocalDb, ori
   }
   const { error } = await client.auth.signInWithOAuth({
     provider: "google",
-    options: { redirectTo: `${origin}/auth/callback?next=/account` },
+    options: { redirectTo: `${origin}/auth/callback?next=${next}` },
   });
   if (error !== null) throw error;
 }

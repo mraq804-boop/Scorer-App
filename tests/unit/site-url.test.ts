@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_SITE_URL, matchUrl, siteUrl } from "@/lib/site-url";
+import { DEFAULT_SITE_URL, matchUrl, siteUrl, teamUrl } from "@/lib/site-url";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -26,5 +26,12 @@ describe("matchUrl", () => {
   it("points at the live page of the match", () => {
     vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://cricket.example/");
     expect(matchUrl("abcd2345")).toBe("https://cricket.example/m/abcd2345");
+  });
+});
+
+describe("teamUrl", () => {
+  it("points at the public team page", () => {
+    vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://cricket.example/");
+    expect(teamUrl("wxyz2345")).toBe("https://cricket.example/t/wxyz2345");
   });
 });

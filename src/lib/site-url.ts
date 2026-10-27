@@ -7,3 +7,7 @@ export function siteUrl(): string {
 export function matchUrl(code: string): string {
   return `${siteUrl()}/m/${code}`;
 }
+
+export function teamUrl(code: string): string {
+  return `${siteUrl()}/t/${code}`;
+}

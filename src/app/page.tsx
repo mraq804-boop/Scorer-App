@@ -25,6 +25,17 @@ export default function Home() {
       <MatchList />
 
       <a
+        href="/team"
+        className="flex min-h-14 items-center justify-between gap-3 rounded-2xl border bg-card p-4 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+      >
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="font-semibold">{t("home.team")}</span>
+          <span className="text-sm text-muted-foreground">{t("home.teamHint")}</span>
+        </span>
+        <ChevronRight className="size-5 shrink-0 text-muted-foreground rtl:rotate-180" aria-hidden />
+      </a>
+
+      <a
         href="/account"
         className="flex min-h-14 items-center justify-between gap-3 rounded-2xl border bg-card p-4 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
       >

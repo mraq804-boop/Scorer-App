@@ -386,6 +386,13 @@ describe("startGoogleSignIn", () => {
     expect((await db.meta.get("pendingClaim"))?.value).toBe("claim-token");
   });
 
+  it("returns to the page that asked for sign-in", async () => {
+    const { client, raw } = fakeClient({ session: null, rpc: claimToken });
+    await startGoogleSignIn(client, freshDb(), ORIGIN, "/team");
+    const { options } = (raw.auth.signInWithOAuth.mock.calls[0] as unknown as [{ options: { redirectTo: string } }])[0];
+    expect(options.redirectTo).toBe(`${ORIGIN}/auth/callback?next=/team`);
+  });
+
   it("skips the claim token when an anonymous user has no matches", async () => {
     const db = freshDb();
     const { client, order } = fakeClient({ session: ANONYMOUS, rpc: claimToken });
