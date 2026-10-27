@@ -275,16 +275,33 @@ describe("privileges", () => {
       )
     ).rows;
     expect(fns.filter((f) => !f.definer || f.config?.join() !== 'search_path=""').map((f) => f.name)).toEqual([]);
-    expect(fns.filter((f) => f.anon).map((f) => f.name)).toEqual(["get_live_events", "get_live_match", "match_topic_readable"]);
-    expect(fns.filter((f) => f.authenticated).map((f) => f.name)).toEqual([
-      "claim_matches",
-      "create_claim_token",
+    expect(fns.filter((f) => f.anon).map((f) => f.name)).toEqual([
       "get_live_events",
       "get_live_match",
-      "get_owner_events",
+      "get_team_page",
       "match_topic_readable",
+    ]);
+    expect(fns.filter((f) => f.authenticated).map((f) => f.name)).toEqual([
+      "accept_scorer_invite",
+      "claim_matches",
+      "create_claim_token",
+      "create_scorer_invite",
+      "create_team",
+      "get_live_events",
+      "get_live_match",
+      "get_my_team",
+      "get_owner_events",
+      "get_team_page",
+      "match_topic_readable",
+      "my_team_ids",
       "push_match_events",
+      "remove_scorer",
+      "set_potm",
+      "set_result_override",
       "take_over_scoring",
+      "upsert_fixture",
+      "upsert_season",
+      "upsert_squad_players",
     ]);
   });
 
@@ -296,9 +313,15 @@ describe("privileges", () => {
       )
     ).rows;
     expect(tables).toEqual([
+      { name: "fixtures", rls: true },
       { name: "match_claims", rls: true },
       { name: "match_events", rls: true },
       { name: "matches", rls: true },
+      { name: "seasons", rls: true },
+      { name: "squad_players", rls: true },
+      { name: "team_invites", rls: true },
+      { name: "team_scorers", rls: true },
+      { name: "teams", rls: true },
     ]);
     const writes = (
       await db.query<{ entry: string }>(
