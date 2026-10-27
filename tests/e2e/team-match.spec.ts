@@ -280,6 +280,31 @@ test("the XI sets Team A's players until the scorer changes them", async ({ page
   expect(match?.rules.playersPerSide).toEqual({ A: 5, B: 11 });
 });
 
+test("changing Team B's players first still lets the XI set Team A's", async ({ page }) => {
+  await openWithTeam(page);
+  await page.getByRole("button", { name: "Rules" }).click();
+  const teamAPlayers = page.getByRole("group", { name: "Team A players" });
+  const teamBPlayers = page.getByRole("group", { name: "Team B players" });
+  const count = (group: Locator) => group.locator("span[aria-live]");
+
+  await page.getByRole("button", { name: "Decrease Team B players" }).click();
+  await page.getByRole("button", { name: "Decrease Team B players" }).click();
+  await page.getByRole("button", { name: "Decrease Team B players" }).click();
+  await expect(count(teamBPlayers)).toHaveText("8");
+  await tick(page, /^Ali\b/, /^Hamza\b/, /^Usman\b/, /^Bilal\b/);
+  await expect(count(teamAPlayers)).toHaveText("4");
+  await expect(count(teamBPlayers)).toHaveText("8");
+
+  await opponent(page).fill("Tigers");
+  await striker(page).selectOption({ label: "Ali" });
+  await nonStriker(page).selectOption({ label: "Hamza" });
+  await bowler(page).fill("Kamran");
+  await start(page).click();
+
+  const { match } = await started(page);
+  expect(match?.rules.playersPerSide).toEqual({ A: 4, B: 8 });
+});
+
 test("when the team fields first the opening bowler is picked from the XI", async ({ page }) => {
   await openWithTeam(page);
   await page.getByRole("radio", { name: "Bowl", exact: true }).check();

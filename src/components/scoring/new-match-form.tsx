@@ -32,7 +32,8 @@ type Values = {
   teamB: string;
   ballType: BallType;
   overs: string;
-  touched: Partial<TunableRules>;
+  touched: Partial<Omit<TunableRules, "playersPerSide">>;
+  touchedPlayers: Partial<Record<TeamSide, number>>;
   winner: TeamSide;
   choice: Choice;
   striker: string;
@@ -51,6 +52,7 @@ const INITIAL: Values = {
   ballType: "tape",
   overs: "10",
   touched: {},
+  touchedPlayers: {},
   winner: "A",
   choice: "bat",
   striker: "",
@@ -116,7 +118,12 @@ function SetupForm({ players, team, fixture }: SetupFormProps) {
 
   const update = (patch: Partial<Values>) => setValues((current) => ({ ...current, ...patch }));
   const setRule: <K extends keyof TunableRules>(key: K, value: TunableRules[K]) => void = (key, value) =>
-    setValues((current) => ({ ...current, touched: { ...current.touched, [key]: value } }));
+    setValues((current) => {
+      if (key !== "playersPerSide") return { ...current, touched: { ...current.touched, [key]: value } };
+      const players = value as Rules["playersPerSide"];
+      const changed = (["A", "B"] as const).filter((side) => players[side] !== rules.playersPerSide[side]);
+      return { ...current, touchedPlayers: { ...current.touchedPlayers, ...Object.fromEntries(changed.map((side) => [side, players[side]])) } };
+    });
   const toggleXi = (id: string) =>
     setValues((current) => {
       const leaving = current.xi.includes(id);
@@ -138,16 +145,12 @@ function SetupForm({ players, team, fixture }: SetupFormProps) {
   const playing = values.playingTeam ? team : undefined;
   const xiPlayers = squad.filter((player) => values.xi.includes(player.id));
   const defaults = defaultRules(values.ballType, overs);
-  const xiRules: Partial<Rules> =
-    playing === undefined
-      ? {}
-      : {
-          playersPerSide: {
-            ...defaults.playersPerSide,
-            A: Math.min(PLAYERS_MAX, Math.max(PLAYERS_MIN, xiPlayers.length)),
-          },
-        };
-  const rules: Rules = { ...defaults, ...xiRules, ...values.touched };
+  const xiPlayersA = playing === undefined ? {} : { A: Math.min(PLAYERS_MAX, Math.max(PLAYERS_MIN, xiPlayers.length)) };
+  const rules: Rules = {
+    ...defaults,
+    ...values.touched,
+    playersPerSide: { ...defaults.playersPerSide, ...xiPlayersA, ...values.touchedPlayers },
+  };
   const battingSide = values.choice === "bat" ? values.winner : otherSide(values.winner);
   const teamBatting = playing !== undefined && battingSide === "A";
   const teamBowling = playing !== undefined && battingSide === "B";
