@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { aggregateTeamStats } from "@/lib/team";
 import { parseTeamPage } from "@/lib/team/page-data";
 
 const record = (playedAt: string) => ({
@@ -87,6 +88,45 @@ describe("parseTeamPage", () => {
       ["nnnn2222", null],
       ["nnnn3333", null],
     ]);
+  });
+
+  it("keeps only the player figures it can read, so one bad entry can't break the page", () => {
+    const good = { playerId: "sq-ali", batting: { runs: 12, balls: 9, fours: 1, sixes: 0, notOut: false }, bowling: null, fielding: { catches: 1, runOuts: 0, stumpings: 0 } };
+    const page = parseTeamPage({
+      ...payload,
+      matches: [
+        {
+          ...payload.matches[0],
+          record: {
+            ...record("2026-11-01T10:00:00.000Z"),
+            xi: ["sq-ali", 7, null],
+            players: [
+              good,
+              null,
+              { playerId: "sq-hamza", batting: null, bowling: null },
+              { playerId: "sq-usman", batting: { runs: "lots" }, bowling: null, fielding: { catches: 0, runOuts: 0, stumpings: 0 } },
+              { playerId: "sq-bilal", batting: null, bowling: { legalBalls: 6 }, fielding: { catches: 0, runOuts: 0, stumpings: 0 } },
+            ],
+          },
+        },
+      ],
+    });
+    expect(page?.matches[0].record?.xi).toEqual(["sq-ali"]);
+    expect(page?.matches[0].record?.players).toEqual([good]);
+    const squad = [{ id: "sq-ali", name: "Ali", role: null, active: true }];
+    const stats = aggregateTeamStats(page?.matches ?? [], squad, { seasonId: null, seasons: [], timeZone: "Asia/Karachi" });
+    expect(stats.players[0]).toMatchObject({ runs: 12, catches: 1 });
+  });
+
+  it("drops a record whose date or outcome it can't read", () => {
+    const page = parseTeamPage({
+      ...payload,
+      matches: [
+        { ...payload.matches[0], code: "nnnn2222", record: { ...record("2026-11-01T10:00:00.000Z"), playedAt: "not a date" } },
+        { ...payload.matches[0], code: "nnnn3333", record: { ...record("2026-11-01T10:00:00.000Z"), outcome: "drawn" } },
+      ],
+    });
+    expect(page?.matches.map((match) => match.record)).toEqual([null, null]);
   });
 
   it("drops rows it can't read", () => {

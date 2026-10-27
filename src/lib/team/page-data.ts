@@ -1,4 +1,4 @@
-import type { Fixture, Season, SquadPlayer, TeamMatchRecord, TeamPageData, TeamPageMatch } from "./types";
+import type { Fixture, PlayerMatchStats, Season, SquadPlayer, TeamMatchRecord, TeamPageData, TeamPageMatch } from "./types";
 
 type Row = Record<string, unknown>;
 
@@ -44,11 +44,36 @@ function readFixture(row: Row): Fixture | undefined {
   };
 }
 
+const isCount = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+
+function hasCounts(row: unknown, keys: readonly string[]): row is Row {
+  return isRow(row) && keys.every((key) => isCount(row[key]));
+}
+
+function readStats(row: Row): PlayerMatchStats | undefined {
+  const { playerId, batting, bowling, fielding } = row;
+  if (!isText(playerId) || !hasCounts(fielding, ["catches", "runOuts", "stumpings"])) return undefined;
+  const battingOk = batting === null || (hasCounts(batting, ["runs", "balls", "fours", "sixes"]) && typeof batting.notOut === "boolean");
+  const bowlingOk = bowling === null || hasCounts(bowling, ["legalBalls", "runs", "wickets", "maidens", "dots"]);
+  if (!battingOk || !bowlingOk) return undefined;
+  return row as PlayerMatchStats;
+}
+
 function readRecord(value: unknown): TeamMatchRecord | null {
   if (!isRow(value) || value.version !== 1) return null;
   if ((value.side !== "A" && value.side !== "B") || !isText(value.playedAt) || !isText(value.opponent)) return null;
-  if (!Array.isArray(value.xi) || !Array.isArray(value.players)) return null;
-  return value as TeamMatchRecord;
+  if (!Number.isFinite(Date.parse(value.playedAt)) || !Array.isArray(value.xi)) return null;
+  const outcome = value.outcome;
+  if (outcome !== null && outcome !== "won" && outcome !== "lost" && outcome !== "tied") return null;
+  return {
+    version: 1,
+    side: value.side,
+    opponent: value.opponent,
+    playedAt: value.playedAt,
+    xi: value.xi.filter(isText),
+    outcome,
+    players: rows(value.players, readStats),
+  };
 }
 
 function readMatch(row: Row): TeamPageMatch | undefined {
