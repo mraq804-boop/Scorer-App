@@ -224,14 +224,21 @@ function MatchScreen({ matchId }: { matchId: string }) {
         </div>
       </div>
 
-      {prompted === "choose_batter" && innings !== null && <BatterSheet innings={innings} {...sheet} />}
-      {prompted === "choose_bowler" && innings !== null && <BowlerSheet innings={innings} {...sheet} />}
+      {prompted === "choose_batter" && innings !== null && (
+        <BatterSheet innings={innings} matchTeam={local.team} {...sheet} />
+      )}
+      {prompted === "choose_bowler" && innings !== null && (
+        <BowlerSheet innings={innings} matchTeam={local.team} {...sheet} />
+      )}
       {prompted === "all_out" && innings !== null && <AllOutDialog innings={innings} {...sheet} />}
-      {!blocked && prompt?.kind === "start_innings" && <StartInningsSheet innings={prompt.innings} {...sheet} />}
+      {!blocked && prompt?.kind === "start_innings" && (
+        <StartInningsSheet innings={prompt.innings} matchTeam={local.team} {...sheet} />
+      )}
       {editing !== null && (
         <EditBallSheet
           state={state}
           ball={editing}
+          matchTeam={local.team}
           busy={busy}
           onClose={() => setEditingId(null)}
           onSave={(patch) => record([{ type: "correct", target: editing.event.id, patch }])}
@@ -241,6 +248,7 @@ function MatchScreen({ matchId }: { matchId: string }) {
         <WicketSheet
           state={state}
           innings={innings}
+          matchTeam={local.team}
           kind={extras.kind}
           busy={busy}
           onClose={() => setWicketOpen(false)}

@@ -30,8 +30,10 @@ const ADD_ERRORS: Record<SquadAddErrorCode, string> = {
 const SELECT_CLASS =
   "h-12 w-full min-w-0 rounded-xl border border-input bg-transparent px-3 text-base transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:bg-input/30 [&>option]:bg-background [&>option]:text-foreground";
 
-export function squadLabels(squad: readonly SquadPlayer[]): Map<string, string> {
-  const keyOf = (player: SquadPlayer) => player.name.toLocaleLowerCase();
+type Named = Pick<SquadPlayer, "id" | "name">;
+
+export function squadLabels(squad: readonly Named[]): Map<string, string> {
+  const keyOf = (player: Named) => player.name.toLocaleLowerCase();
   const sharing = new Map<string, number>();
   for (const player of squad) sharing.set(keyOf(player), (sharing.get(keyOf(player)) ?? 0) + 1);
   const seen = new Map<string, number>();
@@ -52,13 +54,14 @@ type XiSelectProps = {
   name: string;
   label: string;
   value: string;
-  players: readonly SquadPlayer[];
+  players: readonly Pick<SquadPlayer, "id">[];
   labels: ReadonlyMap<string, string>;
   error?: string;
+  empty?: string;
   onChange: (id: string) => void;
 };
 
-export function XiSelect({ name, label, value, players, labels, error, onChange }: XiSelectProps) {
+export function XiSelect({ name, label, value, players, labels, error, empty = t("setup.pickPlayer"), onChange }: XiSelectProps) {
   const id = useId();
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
@@ -73,7 +76,7 @@ export function XiSelect({ name, label, value, players, labels, error, onChange 
         onChange={(event) => onChange(event.target.value)}
         className={SELECT_CLASS}
       >
-        <option value="">{t("setup.pickPlayer")}</option>
+        <option value="">{empty}</option>
         {players.map((player) => (
           <option key={player.id} value={player.id}>
             {labels.get(player.id)}

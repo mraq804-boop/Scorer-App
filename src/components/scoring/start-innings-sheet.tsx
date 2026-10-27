@@ -2,9 +2,10 @@
 
 import { useId, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
-import { z } from "zod";
 import { NameField, NameSuggestions, TeamCaption } from "@/components/scoring/name-field";
-import { choosePlayer, suggestNames } from "@/components/scoring/player-drafts";
+import { choosePlayer, suggestNames, xiFor } from "@/components/scoring/player-drafts";
+import type { MatchTeam } from "@/components/scoring/player-drafts";
+import { XiSelect, squadLabels } from "@/components/scoring/team-xi-picker";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { t } from "@/lib/i18n";
@@ -14,13 +15,12 @@ import { nameSchema, sameName } from "@/lib/validation/match-setup";
 
 type Field = "striker" | "nonStriker" | "bowler";
 type Values = Record<Field, string>;
+type Opener = { name: string; squadId?: string };
 
-const openersSchema = z
-  .object({ striker: nameSchema, nonStriker: nameSchema, bowler: nameSchema })
-  .refine(({ striker, nonStriker }) => striker === "" || nonStriker === "" || !sameName(striker, nonStriker), {
-    path: ["nonStriker"],
-    error: t("setup.error.sameOpener"),
-  });
+function sameOpener(first: Opener, second: Opener): boolean {
+  if (first.squadId !== undefined && second.squadId !== undefined) return first.squadId === second.squadId;
+  return sameName(first.name, second.name);
+}
 
 function battingSide(state: MatchState, innings: 1 | 2): TeamSide {
   const first = state.innings.find((candidate) => candidate.number === 1);
@@ -32,19 +32,25 @@ function battingSide(state: MatchState, innings: 1 | 2): TeamSide {
 type StartInningsSheetProps = {
   state: MatchState;
   innings: 1 | 2;
+  matchTeam?: MatchTeam;
   recent: readonly string[];
   busy: boolean;
   undo: ReactNode;
   onRecord: (drafts: EventDraft[]) => Promise<boolean>;
 };
 
-export function StartInningsSheet({ state, innings, recent, busy, undo, onRecord }: StartInningsSheetProps) {
+export function StartInningsSheet({ state, innings, matchTeam, recent, busy, undo, onRecord }: StartInningsSheetProps) {
   const [values, setValues] = useState<Values>({ striker: "", nonStriker: "", bowler: "" });
   const [errors, setErrors] = useState<Partial<Record<Field, string>>>({});
   const battingListId = useId();
   const bowlingListId = useId();
   const batting = battingSide(state, innings);
   const bowling = otherSide(batting);
+  const battingXi = xiFor(matchTeam, batting);
+  const bowlingXi = xiFor(matchTeam, bowling);
+  const battingLabels = squadLabels(battingXi);
+  const bowlingLabels = squadLabels(bowlingXi);
+  const squadOf = (name: Field) => (name === "bowler" ? bowlingXi : battingXi);
 
   const field = (name: Field) => ({
     name,
@@ -58,16 +64,31 @@ export function StartInningsSheet({ state, innings, recent, busy, undo, onRecord
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const parsed = openersSchema.safeParse(values);
-    if (!parsed.success) {
-      const next: Partial<Record<Field, string>> = {};
-      for (const issue of parsed.error.issues) next[issue.path[0] as Field] ??= issue.message;
+    const next: Partial<Record<Field, string>> = {};
+    const pick = (name: Field): Opener | undefined => {
+      const squad = squadOf(name);
+      if (squad.length > 0) {
+        const chosen = squad.find((player) => player.id === values[name]);
+        if (chosen === undefined) next[name] = t("setup.error.pickPlayer");
+        return chosen === undefined ? undefined : { name: chosen.name, squadId: chosen.id };
+      }
+      const parsed = nameSchema.safeParse(values[name]);
+      if (!parsed.success) next[name] = parsed.error.issues[0]?.message;
+      return parsed.success ? { name: parsed.data } : undefined;
+    };
+    const first = pick("striker");
+    const second = pick("nonStriker");
+    const opening = pick("bowler");
+    if (first !== undefined && second !== undefined && sameOpener(first, second)) {
+      next.nonStriker = t("setup.error.sameOpener");
+    }
+    if (first === undefined || second === undefined || opening === undefined || next.nonStriker !== undefined) {
       setErrors(next);
       return;
     }
-    const striker = choosePlayer(state, batting, parsed.data.striker);
-    const nonStriker = choosePlayer(state, batting, parsed.data.nonStriker);
-    const bowler = choosePlayer(state, bowling, parsed.data.bowler);
+    const striker = choosePlayer(state, batting, first.name, first.squadId);
+    const nonStriker = choosePlayer(state, batting, second.name, second.squadId);
+    const bowler = choosePlayer(state, bowling, opening.name, opening.squadId);
     void onRecord([
       ...striker.drafts,
       ...nonStriker.drafts,
@@ -87,12 +108,27 @@ export function StartInningsSheet({ state, innings, recent, busy, undo, onRecord
         </DrawerHeader>
         <form noValidate onSubmit={submit} className="flex flex-col gap-3 overflow-y-auto px-4">
           <TeamCaption prefix={t("setup.batting")} team={state.teams[batting].name} />
-          <NameField label={t("setup.striker")} list={battingListId} {...field("striker")} />
-          <NameField label={t("setup.nonStriker")} list={battingListId} {...field("nonStriker")} />
+          {battingXi.length > 0 ? (
+            <>
+              <XiSelect label={t("setup.striker")} players={battingXi} labels={battingLabels} {...field("striker")} />
+              <XiSelect label={t("setup.nonStriker")} players={battingXi} labels={battingLabels} {...field("nonStriker")} />
+            </>
+          ) : (
+            <>
+              <NameField label={t("setup.striker")} list={battingListId} {...field("striker")} />
+              <NameField label={t("setup.nonStriker")} list={battingListId} {...field("nonStriker")} />
+              <NameSuggestions id={battingListId} names={suggestNames(state, batting, recent)} />
+            </>
+          )}
           <TeamCaption prefix={t("setup.bowling")} team={state.teams[bowling].name} />
-          <NameField label={t("setup.bowler")} list={bowlingListId} {...field("bowler")} />
-          <NameSuggestions id={battingListId} names={suggestNames(state, batting, recent)} />
-          <NameSuggestions id={bowlingListId} names={suggestNames(state, bowling, recent)} />
+          {bowlingXi.length > 0 ? (
+            <XiSelect label={t("setup.bowler")} players={bowlingXi} labels={bowlingLabels} {...field("bowler")} />
+          ) : (
+            <>
+              <NameField label={t("setup.bowler")} list={bowlingListId} {...field("bowler")} />
+              <NameSuggestions id={bowlingListId} names={suggestNames(state, bowling, recent)} />
+            </>
+          )}
           <Button type="submit" disabled={busy} className="mt-1 h-14 rounded-2xl text-base font-semibold">
             {t("innings.start")}
           </Button>

@@ -24,7 +24,7 @@ describe("choosePlayer", () => {
 
   it("skips players the caller can't reuse", () => {
     const m = new TestMatch();
-    const choice = choosePlayer(m.state, "A", "Ali", (player) => player.id !== m.id("Ali"));
+    const choice = choosePlayer(m.state, "A", "Ali", undefined, (player) => player.id !== m.id("Ali"));
     expect(choice.id).not.toBe(m.id("Ali"));
     expect(choice.drafts).toEqual([{ type: "player_added", player: { id: choice.id, name: "Ali", team: "A" } }]);
   });

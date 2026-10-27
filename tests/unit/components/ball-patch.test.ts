@@ -8,7 +8,7 @@ import { TestMatch } from "../../helpers/match";
 const rules = { ...defaultRules("tape", 10), wideRuns: 2, noBallRuns: 3 };
 
 function legal(overrides: Partial<BallFields> = {}): BallFields {
-  return { kind: "legal", runs: 1, runsAs: "bat", boundary: false, wicketKind: null, fielder: "", ...overrides };
+  return { kind: "legal", runs: 1, runsAs: "bat", boundary: false, wicketKind: null, fielder: "", fielderId: null, ...overrides };
 }
 
 function editable(m: TestMatch, event: DeliveryEvent): EditableBall {
@@ -46,7 +46,7 @@ describe("buildPatch", () => {
   });
 
   it("includes the wicket only when the ball has one", () => {
-    expect(buildPatch(legal({ wicketKind: "bowled" }), rules).wicket).toEqual({ kind: "bowled", fielderName: null });
+    expect(buildPatch(legal({ wicketKind: "bowled" }), rules).wicket).toEqual({ kind: "bowled", fielderName: null, fielderId: null });
     expect(buildPatch(legal(), rules)).not.toHaveProperty("wicket");
   });
 
@@ -54,14 +54,17 @@ describe("buildPatch", () => {
     expect(buildPatch(legal({ wicketKind: "caught", fielder: "  Zain " }), rules).wicket).toEqual({
       kind: "caught",
       fielderName: "Zain",
+      fielderId: null,
     });
     expect(buildPatch(legal({ wicketKind: "caught", fielder: "  " }), rules).wicket).toEqual({
       kind: "caught",
       fielderName: null,
+      fielderId: null,
     });
     expect(buildPatch(legal({ wicketKind: "bowled", fielder: "Zain" }), rules).wicket).toEqual({
       kind: "bowled",
       fielderName: null,
+      fielderId: null,
     });
   });
 });

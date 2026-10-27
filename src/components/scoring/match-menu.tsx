@@ -29,7 +29,7 @@ type Panel = "menu" | "bowler" | "retire" | "balls" | "settings" | "end" | "scor
 type OnRecord = (drafts: EventDraft[]) => Promise<boolean>;
 
 type MatchMenuProps = {
-  local: Pick<LocalMatch, "id" | "code" | "syncedSeq">;
+  local: Pick<LocalMatch, "id" | "code" | "syncedSeq" | "team">;
   state: MatchState;
   blocked: boolean;
   busy: boolean;
@@ -188,6 +188,7 @@ export function MatchMenu({ local, state, blocked, busy, recent, onRecord, onEdi
         <BowlerSheet
           state={state}
           innings={live}
+          matchTeam={local.team}
           recent={recent}
           busy={busy}
           title={t("menu.changeBowler")}

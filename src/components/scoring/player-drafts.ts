@@ -1,23 +1,58 @@
 import type { BowlerLine, EventDraft, InningsState, MatchState, Player, TeamSide } from "@/lib/scoring";
+import type { LocalMatch } from "@/lib/local/db";
 import { sameName } from "@/lib/validation/match-setup";
 
 export type PlayerChoice = { id: string; drafts: EventDraft[] };
+export type MatchTeam = NonNullable<LocalMatch["team"]>;
+export type XiPlayer = { id: string; name: string };
 
 type PlayerFilter = (player: Player) => boolean;
+
+const NO_XI: readonly XiPlayer[] = [];
 
 export function choosePlayer(
   state: MatchState,
   team: TeamSide,
   name: string,
+  squadId?: string,
   canReuse: PlayerFilter = () => true,
 ): PlayerChoice {
   const wanted = name.trim();
+  if (squadId !== undefined) {
+    const known = state.players[squadId];
+    if (known !== undefined) return { id: known.id, drafts: [] };
+    const player: Player = { id: squadId, name: wanted, team };
+    return { id: player.id, drafts: [{ type: "player_added", player }] };
+  }
   const existing = Object.values(state.players).find(
     (player) => player.team === team && sameName(player.name, wanted) && canReuse(player),
   );
   if (existing !== undefined) return { id: existing.id, drafts: [] };
   const player: Player = { id: crypto.randomUUID(), name: wanted, team };
   return { id: player.id, drafts: [{ type: "player_added", player }] };
+}
+
+export function xiFor(team: MatchTeam | undefined, side: TeamSide): readonly XiPlayer[] {
+  return team?.side === side ? team.xi : NO_XI;
+}
+
+export function chooseTypedPlayer(
+  state: MatchState,
+  team: TeamSide,
+  typed: string,
+  xi: readonly XiPlayer[],
+  canReuse?: PlayerFilter,
+): PlayerChoice {
+  const squad = xi.find((player) => sameName(player.name, typed.trim()));
+  if (squad === undefined) return choosePlayer(state, team, typed, undefined, canReuse);
+  return choosePlayer(state, team, squad.name, squad.id);
+}
+
+export function fielderOptions(xi: readonly XiPlayer[], state: MatchState, bowlerId: string | null): XiPlayer[] {
+  if (xi.length === 0) return [];
+  const bowler = bowlerId === null ? undefined : state.players[bowlerId];
+  if (bowler === undefined || xi.some((player) => player.id === bowler.id)) return [...xi];
+  return [...xi, { id: bowler.id, name: bowler.name }];
 }
 
 export function suggestNames(

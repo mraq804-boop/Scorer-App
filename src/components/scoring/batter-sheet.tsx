@@ -3,7 +3,9 @@
 import { useId, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { NameField, NameSuggestions } from "@/components/scoring/name-field";
-import { choosePlayer, suggestNames } from "@/components/scoring/player-drafts";
+import { choosePlayer, chooseTypedPlayer, suggestNames, xiFor } from "@/components/scoring/player-drafts";
+import type { MatchTeam, XiPlayer } from "@/components/scoring/player-drafts";
+import { squadLabels } from "@/components/scoring/team-xi-picker";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { t } from "@/lib/i18n";
@@ -13,24 +15,35 @@ import { nameSchema, sameName } from "@/lib/validation/match-setup";
 type BatterSheetProps = {
   state: MatchState;
   innings: InningsState;
+  matchTeam?: MatchTeam;
   recent: readonly string[];
   busy: boolean;
   undo: ReactNode;
   onRecord: (drafts: EventDraft[]) => Promise<boolean>;
 };
 
-export function BatterSheet({ state, innings, recent, busy, undo, onRecord }: BatterSheetProps) {
+export function BatterSheet({ state, innings, matchTeam, recent, busy, undo, onRecord }: BatterSheetProps) {
   const [name, setName] = useState("");
   const [error, setError] = useState<string>();
   const listId = useId();
+  const squadId = useId();
   const team = innings.battingTeam;
+  const xi = xiFor(matchTeam, team);
+  const labels = squadLabels(xi);
   const atCrease = [innings.striker, innings.nonStriker].filter((id) => id !== null);
   const lines = new Map(innings.batting.map((line) => [line.playerId, line]));
   const returning = innings.batting.filter(
     (line) => line.retiredHurt && line.out === null && !atCrease.includes(line.playerId),
   );
 
+  const squad = xi.filter((player) => !lines.has(player.id));
+
   const sendIn = (player: string, added: EventDraft[] = []) => void onRecord([...added, { type: "batter_in", player }]);
+
+  function sendSquadPlayer(player: XiPlayer) {
+    const choice = choosePlayer(state, team, player.name, player.id);
+    sendIn(choice.id, choice.drafts);
+  }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -44,7 +57,7 @@ export function BatterSheet({ state, innings, recent, busy, undo, onRecord }: Ba
       setError(t("batter.alreadyIn", { name: batting.name }));
       return;
     }
-    const choice = choosePlayer(state, team, parsed.data, (player) => {
+    const choice = chooseTypedPlayer(state, team, parsed.data, squad, (player) => {
       const line = lines.get(player.id);
       return line === undefined || (line.retiredHurt && line.out === null);
     });
@@ -74,6 +87,25 @@ export function BatterSheet({ state, innings, recent, busy, undo, onRecord }: Ba
                 </Button>
               ))}
             </section>
+          )}
+          {squad.length > 0 && (
+            <div role="group" aria-labelledby={squadId} className="flex flex-col gap-2">
+              <h3 id={squadId} className="text-sm font-medium">
+                {t("setup.xi")}
+              </h3>
+              {squad.map((player) => (
+                <Button
+                  key={player.id}
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => sendSquadPlayer(player)}
+                  className="h-12 justify-start rounded-xl text-base"
+                >
+                  <bdi className="truncate">{labels.get(player.id)}</bdi>
+                </Button>
+              ))}
+            </div>
           )}
           <NameField
             name="batter"

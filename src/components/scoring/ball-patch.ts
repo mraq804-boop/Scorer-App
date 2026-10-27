@@ -20,6 +20,7 @@ export type BallFields = {
   boundary: boolean;
   wicketKind: DismissalKind | null;
   fielder: string;
+  fielderId: string | null;
 };
 
 export type EditableBall = { event: DeliveryEvent; item: CommentaryItem; innings: InningsState };
@@ -39,6 +40,7 @@ export function fieldsOf(item: CommentaryItem): BallFields {
     boundary: item.boundary,
     wicketKind: item.wicket?.kind ?? null,
     fielder: item.wicket?.fielderName ?? "",
+    fielderId: item.wicket?.fielderId ?? null,
   };
 }
 
@@ -56,10 +58,10 @@ function penaltyOf(kind: BallKind, rules: Rules): number {
   return 0;
 }
 
-function fielderFor(fields: BallFields): string | null {
+function fielderFor(fields: BallFields): { fielderName: string | null; fielderId: string | null } {
   const name = fields.fielder.trim();
-  const named = fields.wicketKind !== null && WITH_FIELDER.has(fields.wicketKind);
-  return named && name !== "" ? name : null;
+  const named = fields.wicketKind !== null && WITH_FIELDER.has(fields.wicketKind) && name !== "";
+  return named ? { fielderName: name, fielderId: fields.fielderId } : { fielderName: null, fielderId: null };
 }
 
 export function buildPatch(fields: BallFields, rules: Rules): CorrectionPatch {
@@ -70,7 +72,7 @@ export function buildPatch(fields: BallFields, rules: Rules): CorrectionPatch {
     boundary: isBoundaryRuns(fields.runs) && fields.boundary,
     penalty: penaltyOf(fields.kind, rules),
   };
-  if (fields.wicketKind !== null) patch.wicket = { kind: fields.wicketKind, fielderName: fielderFor(fields) };
+  if (fields.wicketKind !== null) patch.wicket = { kind: fields.wicketKind, ...fielderFor(fields) };
   return patch;
 }
 
@@ -82,7 +84,8 @@ export function isUnchanged(patch: CorrectionPatch, item: CommentaryItem): boole
     patch.boundary === item.boundary &&
     patch.penalty === item.penalty &&
     patch.wicket?.kind === item.wicket?.kind &&
-    patch.wicket?.fielderName === item.wicket?.fielderName
+    patch.wicket?.fielderName === item.wicket?.fielderName &&
+    (patch.wicket?.fielderId ?? null) === (item.wicket?.fielderId ?? null)
   );
 }
 

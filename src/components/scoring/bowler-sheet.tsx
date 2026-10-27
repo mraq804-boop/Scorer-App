@@ -3,7 +3,9 @@
 import { useId, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { NameField, NameSuggestions } from "@/components/scoring/name-field";
-import { choosePlayer, previousBowlers, suggestNames } from "@/components/scoring/player-drafts";
+import { choosePlayer, chooseTypedPlayer, previousBowlers, suggestNames, xiFor } from "@/components/scoring/player-drafts";
+import type { MatchTeam, XiPlayer } from "@/components/scoring/player-drafts";
+import { squadLabels } from "@/components/scoring/team-xi-picker";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { t } from "@/lib/i18n";
@@ -14,6 +16,7 @@ import { nameSchema } from "@/lib/validation/match-setup";
 type BowlerSheetProps = {
   state: MatchState;
   innings: InningsState;
+  matchTeam?: MatchTeam;
   recent: readonly string[];
   busy: boolean;
   undo?: ReactNode;
@@ -22,15 +25,34 @@ type BowlerSheetProps = {
   onRecord: (drafts: EventDraft[]) => Promise<boolean>;
 };
 
-export function BowlerSheet({ state, innings, recent, busy, undo, title = t("bowler.title"), onClose, onRecord }: BowlerSheetProps) {
+export function BowlerSheet({
+  state,
+  innings,
+  matchTeam,
+  recent,
+  busy,
+  undo,
+  title = t("bowler.title"),
+  onClose,
+  onRecord,
+}: BowlerSheetProps) {
   const [name, setName] = useState("");
   const [error, setError] = useState<string>();
   const listId = useId();
+  const squadId = useId();
   const team = innings.bowlingTeam;
   const bowled = new Set(innings.bowling.map((line) => line.playerId));
+  const xi = xiFor(matchTeam, team);
+  const labels = squadLabels(xi);
+  const squad = xi.filter((player) => !bowled.has(player.id));
 
   const bowl = (player: string, added: EventDraft[] = []) => void onRecord([...added, { type: "bowler_changed", player }]);
   const previous = previousBowlers(innings);
+
+  function bowlSquadPlayer(player: XiPlayer) {
+    const choice = choosePlayer(state, team, player.name, player.id);
+    bowl(choice.id, choice.drafts);
+  }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -39,7 +61,7 @@ export function BowlerSheet({ state, innings, recent, busy, undo, title = t("bow
       setError(parsed.error.issues[0]?.message);
       return;
     }
-    const choice = choosePlayer(state, team, parsed.data);
+    const choice = chooseTypedPlayer(state, team, parsed.data, squad);
     bowl(choice.id, choice.drafts);
   }
 
@@ -67,6 +89,25 @@ export function BowlerSheet({ state, innings, recent, busy, undo, title = t("bow
                 </Button>
               ))}
             </section>
+          )}
+          {squad.length > 0 && (
+            <div role="group" aria-labelledby={squadId} className="flex flex-col gap-2">
+              <h3 id={squadId} className="text-sm font-medium">
+                {t("setup.xi")}
+              </h3>
+              {squad.map((player) => (
+                <Button
+                  key={player.id}
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => bowlSquadPlayer(player)}
+                  className="h-12 justify-start rounded-xl text-base"
+                >
+                  <bdi className="truncate">{labels.get(player.id)}</bdi>
+                </Button>
+              ))}
+            </div>
           )}
           <NameField
             name="bowler"

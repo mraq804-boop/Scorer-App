@@ -13,8 +13,10 @@ import {
 } from "@/components/scoring/ball-patch";
 import type { EditableBall } from "@/components/scoring/ball-patch";
 import { NameField, NameSuggestions } from "@/components/scoring/name-field";
-import { suggestNames } from "@/components/scoring/player-drafts";
+import { fielderOptions, suggestNames, xiFor } from "@/components/scoring/player-drafts";
+import type { MatchTeam } from "@/components/scoring/player-drafts";
 import { ToggleRow } from "@/components/scoring/rules-fields";
+import { XiSelect, squadLabels } from "@/components/scoring/team-xi-picker";
 import { SegmentedControl } from "@/components/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
@@ -41,12 +43,13 @@ const RUNS = [0, 1, 2, 3, 4, 5, 6, 7].map((runs) => ({ value: runs, label: Strin
 type EditBallSheetProps = {
   state: MatchState;
   ball: EditableBall;
+  matchTeam?: MatchTeam;
   busy: boolean;
   onClose: () => void;
   onSave: (patch: CorrectionPatch) => Promise<boolean>;
 };
 
-export function EditBallSheet({ state, ball, busy, onClose, onSave }: EditBallSheetProps) {
+export function EditBallSheet({ state, ball, matchTeam, busy, onClose, onSave }: EditBallSheetProps) {
   const [fields, setFields] = useState(() => fieldsOf(ball.item));
   const [fielderError, setFielderError] = useState<string>();
   const wicketId = useId();
@@ -59,9 +62,11 @@ export function EditBallSheet({ state, ball, busy, onClose, onSave }: EditBallSh
   const patch = buildPatch(fields, state.rules);
   const canSave = !busy && wicketFits && canCorrect(ball.event, patch) && !isUnchanged(patch, ball.item);
   const asksFielder = wicketKind !== null && WITH_FIELDER.has(wicketKind);
+  const squad = fielderOptions(xiFor(matchTeam, ball.innings.bowlingTeam), state, ball.event.bowler);
+  const labels = squadLabels(squad);
 
   async function save() {
-    if (asksFielder && fields.fielder.trim() !== "") {
+    if (asksFielder && squad.length === 0 && fields.fielder.trim() !== "") {
       const parsed = nameSchema.safeParse(fields.fielder);
       if (!parsed.success) {
         setFielderError(parsed.error.issues[0]?.message);
@@ -129,22 +134,36 @@ export function EditBallSheet({ state, ball, busy, onClose, onSave }: EditBallSh
               </div>
             </div>
           )}
-          {asksFielder && (
-            <>
-              <NameField
+          {asksFielder &&
+            (squad.length > 0 ? (
+              <XiSelect
                 name="fielder"
                 label={t("wicket.fielder")}
-                value={fields.fielder}
-                error={fielderError}
-                list={fieldersId}
-                onChange={(fielder) => {
-                  setFields((current) => ({ ...current, fielder }));
-                  setFielderError(undefined);
+                value={fields.fielderId ?? ""}
+                players={squad}
+                labels={labels}
+                empty={t("wicket.noFielder")}
+                onChange={(id) => {
+                  const picked = squad.find((player) => player.id === id);
+                  setFields((current) => ({ ...current, fielder: picked?.name ?? "", fielderId: picked?.id ?? null }));
                 }}
               />
-              <NameSuggestions id={fieldersId} names={suggestNames(state, ball.innings.bowlingTeam, [])} />
-            </>
-          )}
+            ) : (
+              <>
+                <NameField
+                  name="fielder"
+                  label={t("wicket.fielder")}
+                  value={fields.fielder}
+                  error={fielderError}
+                  list={fieldersId}
+                  onChange={(fielder) => {
+                    setFields((current) => ({ ...current, fielder }));
+                    setFielderError(undefined);
+                  }}
+                />
+                <NameSuggestions id={fieldersId} names={suggestNames(state, ball.innings.bowlingTeam, [])} />
+              </>
+            ))}
         </div>
         <DrawerFooter>
           <Button disabled={!canSave} onClick={() => void save()} className="h-14 rounded-2xl text-base font-bold">

@@ -132,6 +132,7 @@ export const en = {
   "dismissal.retired_out": "Retired out",
   "wicket.title": "How out?",
   "wicket.fielder": "Fielder (optional)",
+  "wicket.noFielder": "No fielder",
   "wicket.batter": "Which batter?",
   "wicket.runs": "Runs completed",
   "wicket.out": "Out",
