@@ -299,6 +299,7 @@ describe("privileges", () => {
       "set_potm",
       "set_result_override",
       "take_over_scoring",
+      "update_team",
       "upsert_fixture",
       "upsert_season",
       "upsert_squad_players",

@@ -16,6 +16,7 @@ import {
   setPotm,
   setResultOverride,
   supabaseSquadPush,
+  updateTeam,
   upsertFixture,
   upsertSeason,
   upsertSquadPlayers,
@@ -298,6 +299,13 @@ describe("refreshTeamCacheInBackground", () => {
 });
 
 describe("team calls", () => {
+  it("updateTeam sends the new name, home ground and time zone", async () => {
+    const { client, rpc } = clientWith(() => ok(null));
+
+    expect(await updateTeam(client, { name: "Lions CC", homeGround: null, timeZone: "Asia/Dubai" })).toEqual({ ok: true, value: undefined });
+    expect(rpc).toHaveBeenCalledWith("update_team", { p_name: "Lions CC", p_home_ground: null, p_time_zone: "Asia/Dubai" });
+  });
+
   it("createTeam sends the name, home ground and time zone and returns the code", async () => {
     const { client, rpc } = clientWith(() => ok("abcd2345"));
 

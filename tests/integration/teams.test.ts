@@ -633,6 +633,7 @@ describe("access", () => {
       "fixture_json(f fixtures)": [],
       "get_my_team()": ["authenticated"],
       "get_team_page(p_code text)": ["anon", "authenticated"],
+      "google_display_name(p_user uuid)": [],
       "lock_owned_team()": [],
       "my_team_ids()": ["authenticated"],
       "push_match_events(p_match jsonb, p_device uuid, p_events jsonb)": ["authenticated"],
@@ -641,6 +642,7 @@ describe("access", () => {
       "set_result_override(p_code text, p_no_result boolean)": ["authenticated"],
       "team_seasons_json(p_team uuid)": [],
       "team_squad_json(p_team uuid)": [],
+      "update_team(p_name text, p_home_ground text, p_time_zone text)": ["authenticated"],
       "upsert_fixture(p_fixture jsonb)": ["authenticated"],
       "upsert_season(p_season jsonb)": ["authenticated"],
       "upsert_squad_players(p_team uuid, p_players jsonb)": ["authenticated"],
@@ -657,5 +659,37 @@ describe("access", () => {
     expect(
       Object.fromEntries(fns.map((f) => [f.sig, (["anon", "authenticated"] as const).filter((role) => f[role])])),
     ).toEqual(expected);
+  });
+});
+
+describe("update_team", () => {
+  const EDITOR = { sub: "00000000-0000-0000-0000-000000000a04", anonymous: false };
+
+  beforeAll(async () => {
+    await db.query(`insert into auth.users (id) values ($1)`, [EDITOR.sub]);
+    await createTeam(EDITOR, "Hawks", "Old Ground", null);
+  });
+
+  function updateTeam(actor: Actor, name: string, ground: string | null, timeZone: string) {
+    return call(actor, "update_team", [name, ground, timeZone]);
+  }
+
+  it("lets the owner change the name, home ground and time zone", async () => {
+    await updateTeam(EDITOR, "Hawks CC", "", "Asia/Dubai");
+
+    const { code } = await teamOf(EDITOR);
+    expect(await teamPage(code)).toMatchObject({ team: { name: "Hawks CC", homeGround: null, timeZone: "Asia/Dubai" } });
+    await updateTeam(EDITOR, "Hawks CC", "New Ground", "Asia/Karachi");
+    expect(await teamPage(code)).toMatchObject({ team: { homeGround: "New Ground", timeZone: "Asia/Karachi" } });
+  });
+
+  it("refuses anyone but the owner, an unknown time zone and a name that's too long", async () => {
+    for (const actor of [SCORER, STRANGER, GUEST, "anon"] as const) {
+      await expectDbError(updateTeam(actor, "Taken over", null, "Asia/Karachi"), /not_team_owner|permission denied/);
+    }
+    await expectDbError(updateTeam(EDITOR, "Hawks CC", null, "Mars/Olympus"), /invalid_time_zone/);
+    await expectDbError(updateTeam(EDITOR, "h".repeat(41), null, "Asia/Karachi"), /check constraint/);
+    const { code } = await teamOf(EDITOR);
+    expect(await teamPage(code)).toMatchObject({ team: { name: "Hawks CC" } });
   });
 });

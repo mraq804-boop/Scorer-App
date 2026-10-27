@@ -1,10 +1,10 @@
 "use client";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ChevronLeft, LoaderCircle } from "lucide-react";
+import { ChevronLeft, LoaderCircle, Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { CreateTeam } from "@/components/team/create-team";
+import { CreateTeam, EditTeam } from "@/components/team/create-team";
 import { FixturesEditor } from "@/components/team/fixtures-editor";
 import { FormAlert } from "@/components/team/form";
 import { MatchOutcomes } from "@/components/team/match-outcomes";
@@ -41,19 +41,44 @@ async function loadView(client: SupabaseClient): Promise<View> {
   }
 }
 
-function TeamHeader({ team }: { team: CachedTeam }) {
+function TeamHeader({ team, onEdit }: { team: CachedTeam; onEdit?: () => void }) {
   return (
-    <section className="flex flex-col gap-1">
-      <h2 className="truncate text-xl font-bold">
-        <bdi>{team.name}</bdi>
-      </h2>
-      {team.homeGround !== null && (
-        <p className="truncate text-sm text-muted-foreground">
-          <bdi>{team.homeGround}</bdi>
-        </p>
+    <section className="flex items-start gap-3">
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <h2 className="truncate text-xl font-bold">
+          <bdi>{team.name}</bdi>
+        </h2>
+        {team.homeGround !== null && (
+          <p className="truncate text-sm text-muted-foreground">
+            <bdi>{team.homeGround}</bdi>
+          </p>
+        )}
+        <p className="text-sm text-muted-foreground">{t("team.fixtures.timeZone", { zone: team.timeZone })}</p>
+        {team.role === "scorer" && <p className="text-sm font-semibold text-muted-foreground">{t("team.role.scorer")}</p>}
+      </div>
+      {onEdit !== undefined && (
+        <Button type="button" variant="outline" onClick={onEdit} className="h-11 shrink-0 rounded-xl px-4 text-base">
+          <Pencil className="size-4" aria-hidden />
+          {t("team.edit")}
+        </Button>
       )}
-      {team.role === "scorer" && <p className="text-sm font-semibold text-muted-foreground">{t("team.role.scorer")}</p>}
     </section>
+  );
+}
+
+function OwnerHeader({ client, team, onChanged }: { client: SupabaseClient; team: CachedTeam; onChanged: () => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  if (!editing) return <TeamHeader team={team} onEdit={() => setEditing(true)} />;
+  return (
+    <EditTeam
+      client={client}
+      team={team}
+      onCancel={() => setEditing(false)}
+      onSaved={async () => {
+        setEditing(false);
+        await onChanged();
+      }}
+    />
   );
 }
 
@@ -124,7 +149,7 @@ function TeamContent() {
       const owner = team.role === "owner";
       return (
         <>
-          <TeamHeader team={team} />
+          {owner ? <OwnerHeader client={client} team={team} onChanged={onChanged} /> : <TeamHeader team={team} />}
           {owner && <PublicLink team={team} />}
           <FixturesEditor client={client} team={team} onChanged={onChanged} />
           {owner && <MatchOutcomes client={client} team={team} />}

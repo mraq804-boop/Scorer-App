@@ -95,23 +95,23 @@ This records the calls made on the owner's behalf while building [the plan](2026
 
 ## Left for later
 
-### Most worth doing next
-1. **A squad player who wasn't ticked into the XI loses that match's figures.** If a scorer forgets to tick someone and then types his name, his runs and wickets don't count. The fix is to offer "Use Bilal from the squad" and add him to the XI.
-2. **The team's name, ground and time zone can't be edited** after the team is created, and seasons can't be deleted.
+### Closed after the first handover
+- **A squad player left out of the XI** who is typed in by exact name as a batter, bowler or opener is now recorded under his squad id and added to that match's XI, so his figures count. Inactive players and typed substitute fielders still don't count. *If wrong:* a guest who shares a squad player's exact name would be counted as that player.
+- **The owner can now edit the team's name, home ground and time zone** on `/team` (migration `20261027000007_update_team.sql`). Old match titles keep the old name. Seasons still can't be deleted.
 
-### From the final review
-3. **Joining on a bad network:** if the join response is lost, retrying says the invite is invalid, although the person did join.
-4. **The Player of the match picker** isn't locked while it saves. The results list doesn't refresh after a squad rename, and it lists every match.
-5. **One invite per page load:** after the first link, the page has to be reloaded to make another.
-6. **Inactive players** count toward the 60-player limit, and the "squad full" message asks you to remove someone, which isn't possible.
-7. **The date a scorer was added** is shown in the phone's time zone, not the team's.
-8. **A team match scored under a guest session** that finished syncing before a Google sign-in never links to the team.
-9. **Owners and invites:** an owner opening their own invite sees "expired", and an owner can accept another team's invite that they can never use.
-10. **The remove-scorer message** says their matches "still count", which is only true once those matches have finished syncing.
-11. **`/team` needs the browser's storage (IndexedDB)** to load, so it fails in some private modes.
-12. **Players with the same name** look identical on the public leaderboards.
-13. **All-time stats** cover only the newest 500 matches.
-14. **The public page against real data** is tested only when you name a team you made by hand (`E2E_TEAM_CODE`).
+### Still deferred from the final review
+1. **Joining on a bad network:** if the join response is lost, retrying says the invite is invalid, although the person did join.
+2. **The Player of the match picker** isn't locked while it saves. The results list doesn't refresh after a squad rename, and it lists every match.
+3. **One invite per page load:** after the first link, the page has to be reloaded to make another.
+4. **Inactive players** count toward the 60-player limit, and the "squad full" message asks you to remove someone, which isn't possible.
+5. **The date a scorer was added** is shown in the phone's time zone, not the team's.
+6. **A team match scored under a guest session** that finished syncing before a Google sign-in never links to the team.
+7. **Owners and invites:** an owner opening their own invite sees "expired", and an owner can accept another team's invite that they can never use.
+8. **The remove-scorer message** says their matches "still count", which is only true once those matches have finished syncing.
+9. **`/team` needs the browser's storage (IndexedDB)** to load, so it fails in some private modes.
+10. **Players with the same name** look identical on the public leaderboards.
+11. **All-time stats** cover only the newest 500 matches.
+12. **The public page against real data** is tested only when you name a team you made by hand (`E2E_TEAM_CODE`).
 
 ### From earlier tasks
 - **Hardening and code quality:**

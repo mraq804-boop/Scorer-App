@@ -90,8 +90,8 @@ Each delivery records who was on strike, at the other end and bowling. The score
   - `team_scorers`: with the scorer's Google display name, saved when they accept an invite and shown only to the owner. Their email is never stored or shown.
   - `team_invites`: hashed one-time tokens that expire after 7 days.
 
-  Creating a team and accepting an invite both need a Google account.
-- **Players are squad ids.** A team match uses each squad id as the player id in `player_added`, so the engine adds up runs and wickets by id unchanged. A wicket can carry `fielderId` for a catch, run-out or stumping by a squad player. Opponents stay typed names.
+  Creating a team and accepting an invite both need a Google account. Any Google user can call `create_team`, once.
+- **Players are squad ids.** A team match uses each squad id as the player id in `player_added`, so the engine adds up runs and wickets by id unchanged. A wicket can carry `fielderId` for a catch, run-out or stumping by a squad player. Opponents stay typed names. If the scorer types the exact name of an active squad player who wasn't ticked into the XI, as a batter, bowler or opener, that player is recorded under his squad id and added to the match's XI, so his figures count. A typed substitute fielder still doesn't count.
 - **Record flow.**
   ```
   /new ("My team is playing") ──▶ LocalMatch.team { id, side, fixtureId, xi }
@@ -108,7 +108,7 @@ Each delivery records who was on strike, at the other end and bowling. The score
   - Matches in progress show as Live and count nowhere until they finish or are marked No result.
   - A match counts in the season whose dates include the day it was played, in the team's time zone.
 - **RPCs.** All are security definer with `search_path = ''`, and `anon` and `authenticated` have no table writes.
-  - Owner only: `create_team`, `upsert_season`, `upsert_fixture`, `set_potm`, `set_result_override`, `create_scorer_invite`, `remove_scorer`.
+  - Owner only: `update_team` (name, home ground, time zone), `upsert_season`, `upsert_fixture`, `set_potm`, `set_result_override`, `create_scorer_invite`, `remove_scorer`.
   - Owner or scorer: `upsert_squad_players` (a scorer can add players but not change them) and `get_my_team`.
   - Google users: `accept_scorer_invite`.
   - Anyone: `get_team_page(code)`. It returns the team, squad, seasons, fixtures without notes, and up to 500 link-visible team matches with their record, Player of the match and No result. It never returns events.

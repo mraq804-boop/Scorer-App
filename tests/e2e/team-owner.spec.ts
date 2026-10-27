@@ -289,3 +289,32 @@ test("the owner sees each scorer's name and removes the right one", async ({ pag
 
   await expect.poll(() => removed).toEqual([{ p_user: "u-bilal" }]);
 });
+
+test("the owner edits the team's name, home ground and time zone", async ({ page }) => {
+  const calls = await signIn(page, team());
+  const saved = await stubRpc(page, "update_team", null);
+  await page.goto("/team");
+  await expect(page.getByRole("heading", { name: "Lions" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Scorers" })).toContainText("No scorers yet.");
+  calls.myTeam = 0;
+
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await expect(page.getByLabel("Team name")).toHaveValue("Lions");
+  await expect(page.getByLabel("Time zone")).toHaveValue("Asia/Karachi");
+  await page.getByLabel("Team name").fill(" Lions CC ");
+  await page.getByLabel("Home ground (optional)").fill("");
+  await page.getByLabel("Time zone").selectOption("Asia/Dubai");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+
+  await expect.poll(() => saved).toEqual([{ p_name: "Lions CC", p_home_ground: null, p_time_zone: "Asia/Dubai" }]);
+  await expect.poll(() => calls.myTeam).toBe(1);
+  await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
+});
+
+test("a scorer can't edit the team", async ({ page }) => {
+  await signIn(page, team({ role: "scorer" }));
+  await page.goto("/team");
+
+  await expect(page.getByText("You score for this team")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
+});

@@ -21,8 +21,8 @@ Scores live on the scorer's phone first and sync to Supabase when there is signa
    npx supabase link --project-ref <ref>
    npx supabase db push
    ```
-   This applies the six files in `supabase/migrations/`: tables and RLS, the RPCs, the Realtime trigger and topic policy, the claim-token clean-up, the team page (`20261027000005_teams.sql`) and scorer names (`20261027000006_scorer_names.sql`). Repeat `link` and `db push` for the other project.
-   - **Without the CLI:** on a new project, paste all of `supabase/setup-all.sql` into **SQL Editor** and run it once. On a project that already runs the launch, run `supabase/migrations/20261027000005_teams.sql` and then `supabase/migrations/20261027000006_scorer_names.sql` there. If the team migration is already in, run only the second.
+   This applies the seven files in `supabase/migrations/`: tables and RLS, the RPCs, the Realtime trigger and topic policy, the claim-token clean-up, the team page (`20261027000005_teams.sql`), scorer names (`20261027000006_scorer_names.sql`) and team editing (`20261027000007_update_team.sql`). Repeat `link` and `db push` for the other project.
+   - **Without the CLI:** on a new project, paste all of `supabase/setup-all.sql` into **SQL Editor** and run it once. On a project that already runs the launch, run these in order there: `supabase/migrations/20261027000005_teams.sql`, `20261027000006_scorer_names.sql` and `20261027000007_update_team.sql`. Skip any you have already run.
    - **Order:** apply the team migrations **before** deploying the app that includes the team page. Taking over scoring reads the new `matches` columns and fails against an older database, and the team pages need the new RPCs.
 7. **Project Settings → API Keys:** copy the **Project URL** and the **Publishable** key. The app never uses the secret key, so do not put it anywhere.
 

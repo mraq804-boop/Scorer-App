@@ -214,6 +214,15 @@ export function acceptScorerInvite(client: SupabaseClient, token: string): Promi
   return call(client, "accept_scorer_invite", { p_token: token }, readText);
 }
 
+export function updateTeam(client: SupabaseClient, input: NewTeam): Promise<TeamResult<void>> {
+  return call(
+    client,
+    "update_team",
+    { p_name: input.name, p_home_ground: input.homeGround, p_time_zone: input.timeZone },
+    readNothing,
+  );
+}
+
 export function removeScorer(client: SupabaseClient, userId: string): Promise<TeamResult<void>> {
   return call(client, "remove_scorer", { p_user: userId }, readNothing);
 }
