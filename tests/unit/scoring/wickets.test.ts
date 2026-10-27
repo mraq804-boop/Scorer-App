@@ -16,7 +16,7 @@ describe("wickets", () => {
     m.ball({ runs: 0, wicket: { kind: "bowled" } });
     expect(m.inn.wickets).toBe(1);
     expect(bowlerLine(m, "Hamza").wickets).toBe(1);
-    expect(batterLine(m, "Ali").out).toEqual({ kind: "bowled", bowler: m.id("Hamza"), fielderName: null });
+    expect(batterLine(m, "Ali").out).toEqual({ kind: "bowled", bowler: m.id("Hamza"), fielderName: null, fielderId: null });
     expect(nextPrompt(m.state)).toEqual({ kind: "choose_batter" });
     expect(m.inn.fallOfWickets[0]).toMatchObject({ wicket: 1, runs: 0, legalBalls: 1, playerId: m.id("Ali") });
   });
@@ -27,7 +27,7 @@ describe("wickets", () => {
       const m = new TestMatch();
       m.ball({ runs: 0, wicket: { kind, fielderName: "Zain" } });
       expect(bowlerLine(m, "Hamza").wickets).toBe(1);
-      expect(batterLine(m, "Ali").out).toEqual({ kind, bowler: m.id("Hamza"), fielderName: "Zain" });
+      expect(batterLine(m, "Ali").out).toEqual({ kind, bowler: m.id("Hamza"), fielderName: "Zain", fielderId: null });
     },
   );
 
@@ -36,7 +36,7 @@ describe("wickets", () => {
     m.ball({ runs: 0, wicket: { kind, fielderName: "Zain" } });
     expect(m.inn.wickets).toBe(1);
     expect(bowlerLine(m, "Hamza").wickets).toBe(0);
-    expect(batterLine(m, "Ali").out).toEqual({ kind, bowler: null, fielderName: "Zain" });
+    expect(batterLine(m, "Ali").out).toEqual({ kind, bowler: null, fielderName: "Zain", fielderId: null });
   });
 
   it("run out of the non-striker after one run", () => {
@@ -179,7 +179,7 @@ describe("retirements", () => {
     m.ball({ runs: 3 });
     retire(m, "Ali", "out");
     expect(m.inn).toMatchObject({ wickets: 1, striker: m.id("Usman"), nonStriker: null });
-    expect(batterLine(m, "Ali").out).toEqual({ kind: "retired_out", bowler: null, fielderName: null });
+    expect(batterLine(m, "Ali").out).toEqual({ kind: "retired_out", bowler: null, fielderName: null, fielderId: null });
     expect(bowlerLine(m, "Hamza").wickets).toBe(0);
     expect(m.inn.fallOfWickets).toEqual([{ wicket: 1, runs: 3, legalBalls: 1, playerId: m.id("Ali") }]);
     expect(nextPrompt(m.state)).toEqual({ kind: "choose_batter" });

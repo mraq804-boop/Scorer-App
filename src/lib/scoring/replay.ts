@@ -364,6 +364,7 @@ function dismiss(ctx: Context, innings: InningsState, wicket: Wicket, bowlerId: 
     kind: wicket.kind,
     bowler: credited ? bowlerId : null,
     fielderName: wicket.fielderName,
+    fielderId: wicket.fielderId ?? null,
   });
   if (credited) bowlerLineFor(innings, bowlerId).wickets += 1;
   if (ctx.over !== null) ctx.over.summary.wickets += 1;
@@ -381,7 +382,7 @@ function retire(ctx: Context, event: Extract<MatchEvent, { type: "retired" }>): 
     vacateEnd(innings, event.player);
     return;
   }
-  recordWicket(innings, event.player, { kind: "retired_out", bowler: null, fielderName: null });
+  recordWicket(innings, event.player, { kind: "retired_out", bowler: null, fielderName: null, fielderId: null });
   vacateEnd(innings, event.player);
   settleLastManStands(ctx.state, innings);
 }

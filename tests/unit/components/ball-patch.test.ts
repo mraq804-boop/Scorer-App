@@ -109,7 +109,7 @@ describe("a patch laid over the original ball", () => {
 
     m.correct(ball.id, buildPatch({ ...fields, wicketKind: "stumped", fielder: "Faisal" }, m.state.rules));
     const out = m.inn.batting.find((line) => line.playerId === m.id("Ali"))?.out;
-    expect(out).toEqual({ kind: "stumped", bowler: m.id("Hamza"), fielderName: "Faisal" });
+    expect(out).toEqual({ kind: "stumped", bowler: m.id("Hamza"), fielderName: "Faisal", fielderId: null });
   });
 
   it("reports whether the patch changes anything", () => {

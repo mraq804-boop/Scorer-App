@@ -45,7 +45,12 @@ function corrected(event: DeliveryEvent, patch: CorrectionPatch): DeliveryEvent 
     penalty: patch.penalty ?? event.penalty,
     wicket:
       event.wicket !== null && patch.wicket
-        ? { ...event.wicket, kind: patch.wicket.kind, fielderName: patch.wicket.fielderName }
+        ? {
+            ...event.wicket,
+            kind: patch.wicket.kind,
+            fielderName: patch.wicket.fielderName,
+            ...("fielderId" in patch.wicket ? { fielderId: patch.wicket.fielderId } : {}),
+          }
         : event.wicket,
   };
 }

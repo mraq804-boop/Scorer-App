@@ -242,7 +242,7 @@ describe("formatDismissal", () => {
   }
 
   function out(kind: NonNullable<BatterLine["out"]>["kind"], bowler: string | null, fielderName: string | null): string {
-    return formatDismissal(line({ out: { kind, bowler, fielderName } }), named);
+    return formatDismissal(line({ out: { kind, bowler, fielderName, fielderId: null } }), named);
   }
 
   it("writes each way of getting out", () => {

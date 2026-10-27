@@ -256,14 +256,14 @@ describe("corrections", () => {
     const e = m.ball({ runs: 0, wicket: { kind: "bowled" } });
     m.correct(e.id, { wicket: { kind: "caught", fielderName: "Zain" } });
     expect(m.inn.wickets).toBe(1);
-    expect(batterLine(m, "Ali").out).toEqual({ kind: "caught", bowler: m.id("Hamza"), fielderName: "Zain" });
+    expect(batterLine(m, "Ali").out).toEqual({ kind: "caught", bowler: m.id("Hamza"), fielderName: "Zain", fielderId: null });
   });
 
   it("keeps a run-out of the non-striker when the kind is corrected", () => {
     const m = new TestMatch();
     const e = m.ball({ runs: 1, wicket: { kind: "run_out", playerOut: m.id("Usman") } });
     m.correct(e.id, { wicket: { kind: "other", fielderName: null } });
-    expect(batterLine(m, "Usman").out).toEqual({ kind: "other", bowler: null, fielderName: null });
+    expect(batterLine(m, "Usman").out).toEqual({ kind: "other", bowler: null, fielderName: null, fielderId: null });
     expect(batterLine(m, "Ali").out).toBeNull();
     expect(m.inn.wickets).toBe(1);
   });
@@ -273,7 +273,7 @@ describe("corrections", () => {
     const e = m.ball({ runs: 0, wicket: { kind: "bowled" } });
     m.correct(e.id, { wicket: { kind: "run_out", fielderName: null } });
     expect(bowlerLine(m, "Hamza").wickets).toBe(0);
-    expect(batterLine(m, "Ali").out).toEqual({ kind: "run_out", bowler: null, fielderName: null });
+    expect(batterLine(m, "Ali").out).toEqual({ kind: "run_out", bowler: null, fielderName: null, fielderId: null });
   });
 
   it("ignores a wicket patch on a ball without one", () => {

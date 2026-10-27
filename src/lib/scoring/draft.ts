@@ -30,6 +30,7 @@ export function deliveryDraft(state: MatchState, input: BallInput): Extract<Even
           kind: input.wicket.kind,
           playerOut: input.wicket.playerOut ?? innings.striker,
           fielderName: input.wicket.fielderName ?? null,
+          ...(input.wicket.fielderId !== undefined ? { fielderId: input.wicket.fielderId } : {}),
         }
       : null,
   };
