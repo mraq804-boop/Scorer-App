@@ -9,6 +9,7 @@ import {
   createTeam,
   fetchMyTeam,
   refreshTeamCache,
+  refreshTeamCacheInBackground,
   removeScorer,
   setPotm,
   setResultOverride,
@@ -39,9 +40,20 @@ function fail(message: string, status = 400, code?: string): Reply {
   return { data: null, error: { message, code }, status };
 }
 
-function clientWith(reply: (name: string, args: unknown) => Reply | Promise<Reply>) {
+type SessionKind = "member" | "guest" | "none";
+
+function sessionOf(kind: SessionKind) {
+  const session = kind === "none" ? null : { user: { id: "user-1", is_anonymous: kind === "guest" } };
+  return { data: { session }, error: null };
+}
+
+function clientWith(
+  reply: (name: string, args: unknown) => Reply | Promise<Reply>,
+  session: SessionKind | (() => SessionKind) = "member",
+) {
   const rpc = vi.fn(async (name: string, args?: unknown) => reply(name, args));
-  return { client: { rpc } as unknown as SupabaseClient, rpc };
+  const getSession = vi.fn(async () => sessionOf(typeof session === "function" ? session() : session));
+  return { client: { rpc, auth: { getSession } } as unknown as SupabaseClient, rpc, getSession };
 }
 
 function myTeamJson(team = cachedTeam()) {
@@ -188,6 +200,80 @@ describe("refreshTeamCache", () => {
     await refreshTeamCache(client, db);
 
     expect(await db.squadOutbox.count()).toBe(1);
+  });
+
+  it("never touches the cache or the outbox under a guest session, even though the server would answer not a member", async () => {
+    const db = freshDb();
+    const team = cachedTeam();
+    await cacheTeam(db, team);
+    const waiting = await addSquadPlayerOffline(db, { name: "Zain", role: null });
+    const { client, rpc } = clientWith(() => ok(null), "guest");
+
+    await expect(refreshTeamCache(client, db)).rejects.toMatchObject({ name: "TeamRemoteError", code: "not_signed_in" });
+
+    expect(rpc).not.toHaveBeenCalled();
+    expect((await getCachedTeam(db))?.squad).toEqual([...team.squad, waiting]);
+    expect(await getSquadOutbox(db, TEAM_ID)).toEqual([waiting]);
+  });
+
+  it("refreshes under a Google session", async () => {
+    const db = freshDb();
+    await cacheTeam(db, cachedTeam({ name: "Old name" }));
+    const { client, rpc } = clientWith(() => ok(myTeamJson(cachedTeam({ name: "Lions" }))), "member");
+
+    expect((await refreshTeamCache(client, db))?.name).toBe("Lions");
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("refreshTeamCacheInBackground", () => {
+  it("refreshes the cache under a Google session", async () => {
+    const db = freshDb();
+    await cacheTeam(db, cachedTeam({ name: "Old name" }));
+    const { client, rpc } = clientWith(() => ok(myTeamJson(cachedTeam({ name: "Lions" }))));
+
+    await refreshTeamCacheInBackground(client, db);
+
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect((await getCachedTeam(db))?.name).toBe("Lions");
+  });
+
+  it("does not call the server for a guest or when nobody is signed in", async () => {
+    for (const session of ["guest", "none"] as const) {
+      const db = freshDb();
+      const team = cachedTeam();
+      await cacheTeam(db, team);
+      const { client, rpc } = clientWith(() => ok(null), session);
+
+      await refreshTeamCacheInBackground(client, db);
+
+      expect(rpc).not.toHaveBeenCalled();
+      expect(await getCachedTeam(db)).toEqual(team);
+    }
+  });
+
+  it("swallows a failure and keeps the cache", async () => {
+    const db = freshDb();
+    const team = cachedTeam();
+    await cacheTeam(db, team);
+    const { client } = clientWith(() => fail("Bad Gateway", 502));
+
+    await expect(refreshTeamCacheInBackground(client, db)).resolves.toBeUndefined();
+    expect(await getCachedTeam(db)).toEqual(team);
+  });
+
+  it("swallows a session that cannot be read", async () => {
+    const db = freshDb();
+    const client = {
+      rpc: vi.fn(),
+      auth: {
+        getSession: async () => {
+          throw new Error("storage unavailable");
+        },
+      },
+    } as unknown as SupabaseClient;
+
+    await expect(refreshTeamCacheInBackground(client, db)).resolves.toBeUndefined();
   });
 });
 
@@ -392,6 +478,7 @@ describe("supabaseSquadPush", () => {
       rpc: async () => {
         throw new TypeError("Failed to fetch");
       },
+      auth: { getSession: async () => sessionOf("member") },
     } as unknown as SupabaseClient;
 
     expect(await supabaseSquadPush(client)(db)).toBe(false);
@@ -452,6 +539,58 @@ describe("supabaseSquadPush", () => {
 
     expect(await supabaseSquadPush(cachedRefused.client)(db)).toBe(false);
     expect(await db.squadOutbox.count()).toBe(1);
+  });
+
+  it("keeps every row and makes no call while the session is a guest's", async () => {
+    const { db } = await teamWithOutbox(["Zain"]);
+    await queueFor(db, OTHER_TEAM, "Elsewhere");
+    const { client, rpc } = clientWith(() => fail("not_team_owner", 400, "P0001"), "guest");
+
+    expect(await supabaseSquadPush(client)(db)).toBe(false);
+
+    expect(rpc).not.toHaveBeenCalled();
+    expect((await db.squadOutbox.toArray()).map((row) => row.name).sort()).toEqual(["Elsewhere", "Zain"]);
+  });
+
+  it("keeps every row and makes no call while there is no session", async () => {
+    const { db } = await teamWithOutbox(["Zain"]);
+    const { client, rpc } = clientWith(() => ok(1), "none");
+
+    expect(await supabaseSquadPush(client)(db)).toBe(false);
+
+    expect(rpc).not.toHaveBeenCalled();
+    expect(await db.squadOutbox.count()).toBe(1);
+  });
+
+  it("keeps every row when the session cannot be read", async () => {
+    const { db } = await teamWithOutbox(["Zain"]);
+    const { client, rpc } = clientWith(() => ok(1));
+    Object.assign(client, {
+      auth: {
+        getSession: async () => {
+          throw new Error("storage unavailable");
+        },
+      },
+    });
+
+    expect(await supabaseSquadPush(client)(db)).toBe(false);
+
+    expect(rpc).not.toHaveBeenCalled();
+    expect(await db.squadOutbox.count()).toBe(1);
+  });
+
+  it("keeps another team's rows when the session turns into a guest's before the not_team_owner answer is acted on", async () => {
+    const { db } = await teamWithOutbox(["Zain"]);
+    await queueFor(db, OTHER_TEAM, "Left behind");
+    let checks = 0;
+    const { client } = clientWith(
+      (_name, args) => ((args as { p_team: string }).p_team === OTHER_TEAM ? fail("not_team_owner", 400, "P0001") : ok(1)),
+      () => ((checks += 1) === 1 ? "member" : "guest"),
+    );
+
+    expect(await supabaseSquadPush(client)(db)).toBe(false);
+
+    expect((await db.squadOutbox.toArray()).map((row) => row.name)).toEqual(["Left behind"]);
   });
 
   it("keeps pushing other teams when one team's push fails", async () => {

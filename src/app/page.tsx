@@ -3,6 +3,7 @@ import { GuestSession } from "@/components/guest-session";
 import { MatchList } from "@/components/match-list";
 import { InstallApp } from "@/components/pwa/install-app";
 import { PwaRegister } from "@/components/pwa/pwa-register";
+import { TeamCacheRefresh } from "@/components/team/team-cache-refresh";
 import { Button } from "@/components/ui/button";
 import { t } from "@/lib/i18n";
 
@@ -35,6 +36,7 @@ export default function Home() {
       </a>
 
       <InstallApp />
+      <TeamCacheRefresh />
       <GuestSession />
       <PwaRegister />
     </main>

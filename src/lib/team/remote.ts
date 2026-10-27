@@ -119,7 +119,21 @@ export async function fetchMyTeam(client: SupabaseClient): Promise<CachedTeam | 
   return result.value;
 }
 
+type SessionKind = "member" | "guest" | "none";
+
+async function sessionKind(client: SupabaseClient): Promise<SessionKind> {
+  try {
+    const { data } = await client.auth.getSession();
+    const user = data.session?.user;
+    if (user === undefined) return "none";
+    return user.is_anonymous === true ? "guest" : "member";
+  } catch {
+    return "none";
+  }
+}
+
 export async function refreshTeamCache(client: SupabaseClient, db: LocalDb): Promise<CachedTeam | null> {
+  if ((await sessionKind(client)) === "guest") throw new TeamRemoteError("not_signed_in");
   const team = await fetchMyTeam(client);
   if (team === null) {
     await clearCachedTeam(db);
@@ -134,6 +148,11 @@ export async function refreshTeamCache(client: SupabaseClient, db: LocalDb): Pro
     await cacheTeam(db, merged);
     return merged;
   });
+}
+
+export async function refreshTeamCacheInBackground(client: SupabaseClient, db: LocalDb): Promise<void> {
+  if ((await sessionKind(client)) !== "member") return;
+  await refreshTeamCache(client, db).catch(() => undefined);
 }
 
 export function createTeam(client: SupabaseClient, input: NewTeam): Promise<TeamResult<string>> {
@@ -201,7 +220,7 @@ async function sendSquad(
     case "quota_exceeded":
       return "refused";
     case "not_team_owner":
-      if (isCurrent) return "retry";
+      if (isCurrent || (await sessionKind(client)) !== "member") return "retry";
       await removeFromSquadOutbox(db, ids);
       return "done";
     default:
@@ -230,6 +249,7 @@ export function supabaseSquadPush(client: SupabaseClient): SquadPushFn {
   return async (db) => {
     const groups = await getSquadOutboxByTeam(db);
     if (groups.size === 0) return true;
+    if ((await sessionKind(client)) !== "member") return false;
     const currentId = (await getCachedTeam(db))?.id;
     let settled = true;
     for (const [teamId, players] of groups) {

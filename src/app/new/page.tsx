@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { ChevronLeft } from "lucide-react";
+import { Suspense } from "react";
 import { GuestSession } from "@/components/guest-session";
 import { PwaRegister } from "@/components/pwa/pwa-register";
 import { NewMatchForm } from "@/components/scoring/new-match-form";
+import { TeamCacheRefresh } from "@/components/team/team-cache-refresh";
 import { t } from "@/lib/i18n";
 
 export const metadata: Metadata = { title: t("home.newMatch") };
@@ -20,7 +22,10 @@ export default function NewMatchPage() {
         </a>
         <h1 className="text-2xl font-bold">{t("home.newMatch")}</h1>
       </header>
-      <NewMatchForm />
+      <Suspense fallback={null}>
+        <NewMatchForm />
+      </Suspense>
+      <TeamCacheRefresh />
       <GuestSession />
       <PwaRegister />
     </main>

@@ -117,3 +117,69 @@ describe("validateMatchSetup", () => {
     expect(Object.keys(errors).sort()).toEqual(["nonStriker", "teamA"]);
   });
 });
+
+describe("validateMatchSetup for a team match", () => {
+  const ali = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Ali" };
+  const usman = { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", name: "Usman" };
+  const hamza = { id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", name: "Hamza" };
+  const otherAli = { id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", name: "Ali" };
+  const team = { id: "11111111-1111-4111-8111-111111111111", fixtureId: null, xi: [ali, usman, hamza] };
+
+  function teamInput(overrides: Record<string, unknown> = {}) {
+    return { ...input({ bowler: "Kamran" }), striker: ali, nonStriker: usman, team, ...overrides };
+  }
+
+  it("accepts squad players for the team's side and keeps their ids", () => {
+    expect(validateMatchSetup(teamInput())).toEqual({ ok: true, setup: teamInput() });
+  });
+
+  it("accepts a squad bowler when the team fields first", () => {
+    const result = validateMatchSetup(
+      teamInput({ toss: { winner: "A", choice: "bowl" }, striker: "Kamran", nonStriker: "Zain", bowler: hamza }),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("keeps a fixture id", () => {
+    const fixtureId = "33333333-3333-4333-8333-333333333333";
+    expect(validateMatchSetup(teamInput({ team: { ...team, fixtureId } }))).toMatchObject({ ok: true, setup: { team: { fixtureId } } });
+  });
+
+  it("requires at least 2 players in the XI", () => {
+    expect(failure(teamInput({ team: { ...team, xi: [ali] }, nonStriker: "Zain" }))).toEqual({ xi: t("setup.error.xi") });
+    expect(failure(teamInput({ team: { ...team, xi: [] } }))).toMatchObject({ xi: t("setup.error.xi") });
+    expect(validateMatchSetup(teamInput({ team: { ...team, xi: [ali, usman] } })).ok).toBe(true);
+  });
+
+  it("requires the team's side to be picked from the XI", () => {
+    expect(failure(teamInput({ striker: otherAli }))).toEqual({ striker: t("setup.error.notInXi") });
+    const fielding = { toss: { winner: "A", choice: "bowl" }, striker: "Kamran", nonStriker: "Zain" };
+    expect(failure(teamInput({ ...fielding, bowler: otherAli }))).toEqual({ bowler: t("setup.error.notInXi") });
+  });
+
+  it("treats the same squad player as one batter", () => {
+    expect(failure(teamInput({ nonStriker: ali }))).toEqual({ nonStriker: t("setup.error.sameOpener") });
+  });
+
+  it("allows two different squad players who share a name", () => {
+    const twins = { ...team, xi: [ali, otherAli, hamza] };
+    expect(validateMatchSetup(teamInput({ team: twins, nonStriker: otherAli })).ok).toBe(true);
+  });
+
+  it("rejects a squad player without a name or an id", () => {
+    expect(failure(teamInput({ striker: { id: ali.id, name: " " } }))).toMatchObject({ striker: t("setup.error.required") });
+    expect(failure(teamInput({ striker: { id: "", name: "Ali" } }))).toHaveProperty("striker");
+  });
+
+  it("checks the length of a squad player's name", () => {
+    const long = { id: ali.id, name: "a".repeat(41) };
+    expect(failure(teamInput({ striker: long, team: { ...team, xi: [long, usman, hamza] } }))).toEqual({
+      striker: t("setup.error.tooLong"),
+      xi: t("setup.error.tooLong"),
+    });
+  });
+
+  it("rejects a team without an id", () => {
+    expect(failure(teamInput({ team: { ...team, id: "" } }))).toEqual({ form: expect.any(String) });
+  });
+});

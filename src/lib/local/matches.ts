@@ -1,17 +1,20 @@
 import { otherSide, replay } from "@/lib/scoring";
-import type { EventDraft, MatchEvent, Rules, TeamSide } from "@/lib/scoring";
+import type { EventDraft, MatchEvent, Player, Rules, TeamSide } from "@/lib/scoring";
 import { summarize } from "@/lib/share/summary";
 import { newMatchCode } from "./code";
 import type { LocalDb, LocalMatch, StoredEvent } from "./db";
+
+export type SetupPlayer = string | { id: string; name: string };
 
 export type MatchSetup = {
   title?: string;
   teams: [string, string];
   rules: Rules;
   toss: { winner: TeamSide; choice: "bat" | "bowl" };
-  striker: string;
-  nonStriker: string;
-  bowler: string;
+  striker: SetupPlayer;
+  nonStriker: SetupPlayer;
+  bowler: SetupPlayer;
+  team?: { id: string; fixtureId: string | null; xi: { id: string; name: string }[] };
 };
 
 type MatchBase = Omit<LocalMatch, "summary">;
@@ -67,13 +70,19 @@ export async function appendEvents(
   });
 }
 
+function setupPlayer(chosen: SetupPlayer, team: TeamSide): Player {
+  return typeof chosen === "string"
+    ? { id: crypto.randomUUID(), name: chosen, team }
+    : { id: chosen.id, name: chosen.name, team };
+}
+
 export async function createLocalMatch(db: LocalDb, setup: MatchSetup): Promise<LocalMatch> {
   const [teamA, teamB] = setup.teams;
   const title = setup.title ?? `${teamA} vs ${teamB}`;
   const battingTeam = setup.toss.choice === "bat" ? setup.toss.winner : otherSide(setup.toss.winner);
-  const striker = { id: crypto.randomUUID(), name: setup.striker, team: battingTeam };
-  const nonStriker = { id: crypto.randomUUID(), name: setup.nonStriker, team: battingTeam };
-  const bowler = { id: crypto.randomUUID(), name: setup.bowler, team: otherSide(battingTeam) };
+  const striker = setupPlayer(setup.striker, battingTeam);
+  const nonStriker = setupPlayer(setup.nonStriker, battingTeam);
+  const bowler = setupPlayer(setup.bowler, otherSide(battingTeam));
   const drafts: EventDraft[] = [
     {
       type: "match_created",
@@ -107,6 +116,16 @@ export async function createLocalMatch(db: LocalDb, setup: MatchSetup): Promise<
     rules: setup.rules,
     teams: [teamA, teamB],
     title,
+    ...(setup.team === undefined
+      ? {}
+      : {
+          team: {
+            id: setup.team.id,
+            side: "A",
+            fixtureId: setup.team.fixtureId,
+            xi: setup.team.xi.map(({ id, name }) => ({ id, name })),
+          },
+        }),
   };
   return db.transaction("rw", db.matches, db.events, async () => (await commit(db, base, [], drafts)).match);
 }

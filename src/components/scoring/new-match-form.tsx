@@ -1,22 +1,27 @@
 "use client";
 
 import { ChevronDown } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 import type { FormEvent } from "react";
 import { SegmentedControl } from "@/components/segmented-control";
 import { NameField, NameSuggestions, TeamCaption } from "@/components/scoring/name-field";
-import { RulesFields } from "@/components/scoring/rules-fields";
+import { RulesFields, ToggleRow } from "@/components/scoring/rules-fields";
 import type { TunableRules } from "@/components/scoring/rules-fields";
+import { TeamXiPicker, XiSelect, squadLabels } from "@/components/scoring/team-xi-picker";
 import { StorageError } from "@/components/storage-error";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { t } from "@/lib/i18n";
 import { checkStorage, getLocalDb, requestPersist } from "@/lib/local/db";
-import type { StorageCheck } from "@/lib/local/db";
+import type { CachedFixture, CachedTeam, StorageCheck } from "@/lib/local/db";
 import { createLocalMatch, recentPlayerNames } from "@/lib/local/matches";
+import type { SetupPlayer } from "@/lib/local/matches";
 import { defaultRules, otherSide } from "@/lib/scoring";
 import type { BallType, Rules, TeamSide } from "@/lib/scoring";
+import type { SquadPlayer } from "@/lib/team";
+import { getCachedTeam } from "@/lib/team/local";
 import { OVERS_MAX, OVERS_MIN, validateMatchSetup } from "@/lib/validation/match-setup";
 import type { MatchSetupErrors, MatchSetupField } from "@/lib/validation/match-setup";
 
@@ -33,6 +38,11 @@ type Values = {
   striker: string;
   nonStriker: string;
   bowler: string;
+  playingTeam: boolean;
+  xi: string[];
+  pickedStriker: string;
+  pickedNonStriker: string;
+  pickedBowler: string;
 };
 
 const INITIAL: Values = {
@@ -46,9 +56,14 @@ const INITIAL: Values = {
   striker: "",
   nonStriker: "",
   bowler: "",
+  playingTeam: false,
+  xi: [],
+  pickedStriker: "",
+  pickedNonStriker: "",
+  pickedBowler: "",
 };
 
-const FOCUS_ORDER: readonly MatchSetupField[] = ["teamA", "teamB", "overs", "striker", "nonStriker", "bowler"];
+const FOCUS_ORDER: readonly MatchSetupField[] = ["teamA", "teamB", "overs", "xi", "striker", "nonStriker", "bowler"];
 const PLAYERS_LIST_ID = "recent-players";
 
 const BALL_TYPES = [
@@ -75,8 +90,24 @@ function focusFirstInvalid(form: HTMLFormElement, errors: MatchSetupErrors) {
   if (control instanceof HTMLElement) control.focus();
 }
 
-function SetupForm({ players }: { players: string[] }) {
-  const [values, setValues] = useState<Values>(INITIAL);
+function initialValues(team: CachedTeam | undefined, fixture: CachedFixture | undefined): Values {
+  return {
+    ...INITIAL,
+    teamB: fixture?.opponent ?? INITIAL.teamB,
+    overs: fixture?.overs == null ? INITIAL.overs : String(fixture.overs),
+    playingTeam: team !== undefined,
+  };
+}
+
+function pickError(error: string | undefined, picked: string): string | undefined {
+  return error !== undefined && picked === "" ? t("setup.error.pickPlayer") : error;
+}
+
+type SetupFormProps = { players: string[]; team: CachedTeam | undefined; fixture: CachedFixture | undefined };
+
+function SetupForm({ players, team, fixture }: SetupFormProps) {
+  const [values, setValues] = useState<Values>(() => initialValues(team, fixture));
+  const [squad, setSquad] = useState<SquadPlayer[]>(() => team?.squad.filter((player) => player.active) ?? []);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [attempted, setAttempted] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -86,22 +117,53 @@ function SetupForm({ players }: { players: string[] }) {
   const update = (patch: Partial<Values>) => setValues((current) => ({ ...current, ...patch }));
   const setRule: <K extends keyof TunableRules>(key: K, value: TunableRules[K]) => void = (key, value) =>
     setValues((current) => ({ ...current, touched: { ...current.touched, [key]: value } }));
+  const toggleXi = (id: string) =>
+    setValues((current) => {
+      const leaving = current.xi.includes(id);
+      const keep = (picked: string) => (leaving && picked === id ? "" : picked);
+      return {
+        ...current,
+        xi: leaving ? current.xi.filter((member) => member !== id) : [...current.xi, id],
+        pickedStriker: keep(current.pickedStriker),
+        pickedNonStriker: keep(current.pickedNonStriker),
+        pickedBowler: keep(current.pickedBowler),
+      };
+    });
+  const addToXi = (player: SquadPlayer) => {
+    setSquad((current) => [...current, player]);
+    setValues((current) => ({ ...current, xi: [...current.xi, player.id] }));
+  };
 
   const overs = values.overs.trim() === "" ? Number.NaN : Number(values.overs);
   const rules: Rules = { ...defaultRules(values.ballType, overs), ...values.touched };
+  const battingSide = values.choice === "bat" ? values.winner : otherSide(values.winner);
+  const playing = values.playingTeam ? team : undefined;
+  const teamBatting = playing !== undefined && battingSide === "A";
+  const teamBowling = playing !== undefined && battingSide === "B";
+  const labels = squadLabels(squad);
+  const xiPlayers = squad.filter((player) => values.xi.includes(player.id));
+  const pickFor = (id: string): SetupPlayer => {
+    const chosen = xiPlayers.find((player) => player.id === id);
+    return chosen === undefined ? "" : { id: chosen.id, name: chosen.name };
+  };
   const candidate = {
-    teams: [values.teamA, values.teamB],
+    teams: [playing?.name ?? values.teamA, values.teamB],
     rules,
     toss: { winner: values.winner, choice: values.choice },
-    striker: values.striker,
-    nonStriker: values.nonStriker,
-    bowler: values.bowler,
+    striker: teamBatting ? pickFor(values.pickedStriker) : values.striker,
+    nonStriker: teamBatting ? pickFor(values.pickedNonStriker) : values.nonStriker,
+    bowler: teamBowling ? pickFor(values.pickedBowler) : values.bowler,
+    ...(playing === undefined
+      ? {}
+      : { team: { id: playing.id, fixtureId: fixture?.id ?? null, xi: xiPlayers.map(({ id, name }) => ({ id, name })) } }),
   };
   const validation = attempted ? validateMatchSetup(candidate) : null;
   const errors: MatchSetupErrors = validation !== null && !validation.ok ? validation.errors : {};
 
-  const teamNames = { A: values.teamA.trim() || t("setup.teamA"), B: values.teamB.trim() || t("setup.teamB") };
-  const battingSide = values.choice === "bat" ? values.winner : otherSide(values.winner);
+  const teamNames = {
+    A: playing?.name ?? (values.teamA.trim() || t("setup.teamA")),
+    B: values.teamB.trim() || t("setup.teamB"),
+  };
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -126,9 +188,18 @@ function SetupForm({ players }: { players: string[] }) {
 
   return (
     <form noValidate onSubmit={submit} className="flex flex-1 flex-col gap-6">
+      {team !== undefined && (
+        <ToggleRow label={t("setup.myTeam")} checked={values.playingTeam} onChange={(playingTeam) => update({ playingTeam })} />
+      )}
+
       <section className="flex flex-col gap-3">
-        <NameField name="teamA" label={t("setup.teamA")} value={values.teamA} error={errors.teamA} onChange={(teamA) => update({ teamA })} />
+        {playing === undefined ? (
+          <NameField name="teamA" label={t("setup.teamA")} value={values.teamA} error={errors.teamA} onChange={(teamA) => update({ teamA })} />
+        ) : (
+          <NameField name="teamA" label={t("setup.teamA")} value={playing.name} readOnly />
+        )}
         <NameField name="teamB" label={t("setup.teamB")} value={values.teamB} error={errors.teamB} onChange={(teamB) => update({ teamB })} />
+        {playing !== undefined && fixture?.ground != null && <TeamCaption prefix={t("setup.ground")} team={fixture.ground} />}
       </section>
 
       <SegmentedControl
@@ -200,33 +271,74 @@ function SetupForm({ players }: { players: string[] }) {
         <SegmentedControl label={t("setup.tossChoice")} value={values.choice} options={CHOICES} onChange={(choice) => update({ choice })} />
       </section>
 
+      {playing !== undefined && (
+        <TeamXiPicker squad={squad} labels={labels} selected={values.xi} error={errors.xi} onToggle={toggleXi} onAdded={addToXi} />
+      )}
+
       <section className="flex flex-col gap-3">
         <TeamCaption prefix={t("setup.batting")} team={teamNames[battingSide]} />
-        <NameField
-          name="striker"
-          label={t("setup.striker")}
-          value={values.striker}
-          error={errors.striker}
-          list={PLAYERS_LIST_ID}
-          onChange={(striker) => update({ striker })}
-        />
-        <NameField
-          name="nonStriker"
-          label={t("setup.nonStriker")}
-          value={values.nonStriker}
-          error={errors.nonStriker}
-          list={PLAYERS_LIST_ID}
-          onChange={(nonStriker) => update({ nonStriker })}
-        />
+        {teamBatting ? (
+          <>
+            <XiSelect
+              name="striker"
+              label={t("setup.striker")}
+              value={values.pickedStriker}
+              players={xiPlayers}
+              labels={labels}
+              error={pickError(errors.striker, values.pickedStriker)}
+              onChange={(pickedStriker) => update({ pickedStriker })}
+            />
+            <XiSelect
+              name="nonStriker"
+              label={t("setup.nonStriker")}
+              value={values.pickedNonStriker}
+              players={xiPlayers}
+              labels={labels}
+              error={pickError(errors.nonStriker, values.pickedNonStriker)}
+              onChange={(pickedNonStriker) => update({ pickedNonStriker })}
+            />
+          </>
+        ) : (
+          <>
+            <NameField
+              name="striker"
+              label={t("setup.striker")}
+              value={values.striker}
+              error={errors.striker}
+              list={PLAYERS_LIST_ID}
+              onChange={(striker) => update({ striker })}
+            />
+            <NameField
+              name="nonStriker"
+              label={t("setup.nonStriker")}
+              value={values.nonStriker}
+              error={errors.nonStriker}
+              list={PLAYERS_LIST_ID}
+              onChange={(nonStriker) => update({ nonStriker })}
+            />
+          </>
+        )}
         <TeamCaption prefix={t("setup.bowling")} team={teamNames[otherSide(battingSide)]} />
-        <NameField
-          name="bowler"
-          label={t("setup.bowler")}
-          value={values.bowler}
-          error={errors.bowler}
-          list={PLAYERS_LIST_ID}
-          onChange={(bowler) => update({ bowler })}
-        />
+        {teamBowling ? (
+          <XiSelect
+            name="bowler"
+            label={t("setup.bowler")}
+            value={values.pickedBowler}
+            players={xiPlayers}
+            labels={labels}
+            error={pickError(errors.bowler, values.pickedBowler)}
+            onChange={(pickedBowler) => update({ pickedBowler })}
+          />
+        ) : (
+          <NameField
+            name="bowler"
+            label={t("setup.bowler")}
+            value={values.bowler}
+            error={errors.bowler}
+            list={PLAYERS_LIST_ID}
+            onChange={(bowler) => update({ bowler })}
+          />
+        )}
         <NameSuggestions id={PLAYERS_LIST_ID} names={players} />
       </section>
 
@@ -252,16 +364,24 @@ function SetupForm({ players }: { players: string[] }) {
 }
 
 export function NewMatchForm() {
+  const fixtureId = useSearchParams().get("fixture");
   const [storage, setStorage] = useState<StorageCheck | null>(null);
   const [players, setPlayers] = useState<string[]>([]);
+  const [team, setTeam] = useState<CachedTeam | undefined>(undefined);
 
   useEffect(() => {
     let active = true;
     void (async () => {
       const check = await checkStorage();
       if (!active) return;
+      if (!check.ok) {
+        setStorage(check);
+        return;
+      }
+      const cached = await getCachedTeam(getLocalDb()).catch(() => undefined);
+      if (!active) return;
+      setTeam(cached);
       setStorage(check);
-      if (!check.ok) return;
       const recent = await recentPlayerNames(getLocalDb()).catch(() => []);
       if (active) setPlayers(recent);
     })();
@@ -272,5 +392,6 @@ export function NewMatchForm() {
 
   if (storage === null) return null;
   if (!storage.ok) return <StorageError reason={storage.reason} />;
-  return <SetupForm players={players} />;
+  const fixture = team?.fixtures.find((candidate) => candidate.id === fixtureId);
+  return <SetupForm players={players} team={team} fixture={fixture} />;
 }
