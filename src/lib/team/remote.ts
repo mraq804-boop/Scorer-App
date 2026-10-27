@@ -29,7 +29,7 @@ export type TeamResult<T> = { ok: true; value: T } | { ok: false; error: TeamErr
 
 export type NewTeam = { name: string; homeGround: string | null; timeZone: string };
 export type FixtureInput = Omit<CachedFixture, "matchCode">;
-export type Scorer = { userId: string; addedAt: string };
+export type Scorer = { userId: string; name: string | null; addedAt: string };
 
 export class TeamRemoteError extends Error {
   readonly code: TeamError;
@@ -162,8 +162,10 @@ function readScorers(data: unknown): { value: Scorer[] } | undefined {
   if (!isObject(data)) return undefined;
   const scorers = Array.isArray(data.scorers) ? data.scorers : [];
   return {
-    value: scorers.filter(
-      (scorer): scorer is Scorer => isObject(scorer) && typeof scorer.userId === "string" && typeof scorer.addedAt === "string",
+    value: scorers.flatMap((scorer) =>
+      isObject(scorer) && typeof scorer.userId === "string" && typeof scorer.addedAt === "string"
+        ? [{ userId: scorer.userId, name: typeof scorer.name === "string" ? scorer.name : null, addedAt: scorer.addedAt }]
+        : [],
     ),
   };
 }

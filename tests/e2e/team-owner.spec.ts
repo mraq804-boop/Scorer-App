@@ -260,3 +260,32 @@ test("an owner creates a scorer invite to share on WhatsApp", async ({ page }) =
   const whatsapp = await scorers.getByRole("link", { name: "Share on WhatsApp" }).getAttribute("href");
   expect(decodeURIComponent(whatsapp ?? "")).toContain("Join Lions as a scorer: http://localhost:3200/team/join?token=tok-abc");
 });
+
+test("the owner sees each scorer's name and removes the right one", async ({ page }) => {
+  await signIn(page, team());
+  const { id, code, name, homeGround, timeZone, role, squad, seasons, fixtures } = team();
+  await stubRpc(page, "get_my_team", {
+    role,
+    team: { id, code, name, homeGround, timeZone },
+    squad,
+    seasons,
+    fixtures,
+    scorers: [
+      { userId: "u-bilal", name: "Bilal Ahmed", addedAt: "2026-10-27T08:00:00.000Z" },
+      { userId: "u-nameless", name: null, addedAt: "2026-10-28T08:00:00.000Z" },
+    ],
+  });
+  const removed = await stubRpc(page, "remove_scorer", null);
+  await page.goto("/team");
+  const scorers = page.getByRole("region", { name: "Scorers" });
+
+  await expect(scorers.getByRole("listitem")).toHaveCount(2);
+  await expect(scorers.getByRole("listitem").first()).toContainText("Bilal Ahmed");
+  await expect(scorers.getByRole("listitem").nth(1)).toContainText("Scorer");
+  await scorers.getByRole("button", { name: /^Remove Bilal Ahmed/ }).click();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog).toContainText("Remove Bilal Ahmed?");
+  await dialog.getByRole("button", { name: "Remove", exact: true }).click();
+
+  await expect.poll(() => removed).toEqual([{ p_user: "u-bilal" }]);
+});

@@ -359,10 +359,22 @@ describe("team calls", () => {
   });
 
   it("fetchScorers reads the owner's scorer list from get_my_team", async () => {
-    const scorers = [{ userId: "user-2", addedAt: "2026-10-27T08:00:00.000Z" }];
-    const { client, rpc } = clientWith(() => ok({ ...myTeamJson(), scorers: [...scorers, { userId: 7 }] }));
+    const scorers = [
+      { userId: "user-2", name: "Bilal Ahmed", addedAt: "2026-10-27T08:00:00.000Z" },
+      { userId: "user-3", name: null, addedAt: "2026-10-27T09:00:00.000Z" },
+    ];
+    const fromServer = [
+      scorers[0],
+      { userId: "user-3", addedAt: "2026-10-27T09:00:00.000Z" },
+      { userId: "user-4", name: 42, addedAt: "2026-10-27T10:00:00.000Z" },
+      { userId: 7 },
+    ];
+    const { client, rpc } = clientWith(() => ok({ ...myTeamJson(), scorers: fromServer }));
 
-    expect(await fetchScorers(client)).toEqual({ ok: true, value: scorers });
+    expect(await fetchScorers(client)).toEqual({
+      ok: true,
+      value: [...scorers, { userId: "user-4", name: null, addedAt: "2026-10-27T10:00:00.000Z" }],
+    });
     expect(rpc).toHaveBeenCalledWith("get_my_team", undefined);
   });
 

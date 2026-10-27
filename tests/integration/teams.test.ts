@@ -192,6 +192,11 @@ beforeAll(async () => {
   for (const sub of [OWNER, OTHER_OWNER, QUOTA_OWNER, SCORER, LATE_SCORER, STRANGER, GUEST].map((u) => u.sub).concat(FILLERS)) {
     await db.query(`insert into auth.users (id) values ($1)`, [sub]);
   }
+  await db.query(`update auth.users set email = $2, raw_user_meta_data = $3 where id = $1`, [
+    SCORER.sub,
+    "bilal@example.com",
+    { full_name: "  Bilal Ahmed ", email: "bilal@example.com" },
+  ]);
 }, 60_000);
 
 describe("create_team", () => {
@@ -239,6 +244,12 @@ describe("scorer invites", () => {
 
     expect(await rows(`select team_id, user_id from public.team_scorers`)).toEqual([{ team_id: lions.id, user_id: SCORER.sub }]);
     expect(await myTeam(SCORER)).toMatchObject({ role: "scorer", team: { id: lions.id, code: lions.code } });
+  });
+
+  it("remembers a scorer's Google name for the owner, never the email", async () => {
+    const stored = await rows(`select display_name from public.team_scorers where user_id = $1`, [SCORER.sub]);
+    expect(stored).toEqual([{ display_name: "Bilal Ahmed" }]);
+    expect(JSON.stringify(await myTeam(OWNER))).not.toContain("bilal@example.com");
   });
 
   it("an expired invite is invalid", async () => {
@@ -522,7 +533,7 @@ describe("get_my_team", () => {
       team: { id: lions.id, code: lions.code, name: "Lions", homeGround: "Model Town Ground", timeZone: "Asia/Karachi" },
       squad: [ali, usman, hamza],
       seasons: [{ id: expect.any(String), name: "Winter 26/27", startsOn: "2026-11-01", endsOn: "2027-02-28" }],
-      scorers: [{ userId: SCORER.sub, addedAt: expect.stringMatching(ISO) }],
+      scorers: [{ userId: SCORER.sub, name: "Bilal Ahmed", addedAt: expect.stringMatching(ISO) }],
     });
     const fixtures = team?.fixtures as Record<string, unknown>[];
     expect(fixtures.map((f) => f.opponent)).toEqual(["Recent", "Jaguars", "Tigers", "Tigers", "Called off", "Panthers"]);

@@ -26,6 +26,10 @@ type Load = { kind: "loading" } | { kind: "failed" } | { kind: "ready"; scorers:
 
 const dayFormat = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric" });
 
+function scorerName(scorer: Scorer): string {
+  return scorer.name ?? t("team.scorers.unnamed");
+}
+
 type RemoveDialogProps = { client: SupabaseClient; scorer: Scorer; onRemoved: () => Promise<void>; onClose: () => void };
 
 function RemoveDialog({ client, scorer, onRemoved, onClose }: RemoveDialogProps) {
@@ -49,7 +53,9 @@ function RemoveDialog({ client, scorer, onRemoved, onClose }: RemoveDialogProps)
     <AlertDialog open onOpenChange={(open) => !open && !busy && onClose()}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle className="text-lg font-bold">{t("team.scorers.removeTitle")}</AlertDialogTitle>
+          <AlertDialogTitle className="min-w-0 truncate text-lg font-bold">
+            <bdi>{t("team.scorers.removeTitle", { name: scorerName(scorer) })}</bdi>
+          </AlertDialogTitle>
           <AlertDialogDescription>{t("team.scorers.removeBody")}</AlertDialogDescription>
         </AlertDialogHeader>
         {error !== undefined && <FormAlert message={error} />}
@@ -124,13 +130,17 @@ export function ScorersEditor({ client, team }: ScorersEditorProps) {
         <ul className="flex flex-col gap-1.5">
           {load.scorers.map((scorer) => {
             const date = dayFormat.format(new Date(scorer.addedAt));
+            const name = scorerName(scorer);
             return (
               <li key={scorer.userId} className="flex min-h-14 items-center gap-3 rounded-xl border bg-card px-3.5 py-2">
-                <span className="num min-w-0 flex-1 truncate">{t("team.scorers.added", { date })}</span>
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <bdi className="truncate font-medium">{name}</bdi>
+                  <span className="num text-sm text-muted-foreground">{t("team.scorers.added", { date })}</span>
+                </span>
                 <Button
                   type="button"
                   variant="outline"
-                  aria-label={t("team.scorers.removeLabel", { date })}
+                  aria-label={t("team.scorers.removeLabel", { name, date })}
                   onClick={() => setRemoving(scorer)}
                   className="h-11 rounded-xl px-4 text-base"
                 >

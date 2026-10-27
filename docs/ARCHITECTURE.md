@@ -87,7 +87,7 @@ Each delivery records who was on strike, at the other end and bowling. The score
   - `squad_players`: keyed by `(team_id, id)`; the id is made on the phone.
   - `seasons`.
   - `fixtures`: their `notes` are private.
-  - `team_scorers`.
+  - `team_scorers`: with the scorer's Google display name, saved when they accept an invite and shown only to the owner. Their email is never stored or shown.
   - `team_invites`: hashed one-time tokens that expire after 7 days.
 
   Creating a team and accepting an invite both need a Google account.
