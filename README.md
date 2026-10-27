@@ -67,3 +67,6 @@ E2E_BACKEND=1 npx playwright test --project=mobile
 
 ## Deploy
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+## Copyright
+© 2026 AQ. All rights reserved. The bundled Noto fonts in `src/assets/fonts` keep their own licence (SIL Open Font License).

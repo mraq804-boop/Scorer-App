@@ -1,4 +1,5 @@
 import { ChevronRight, Plus } from "lucide-react";
+import { Copyright } from "@/components/copyright";
 import { GuestSession } from "@/components/guest-session";
 import { MatchList } from "@/components/match-list";
 import { InstallApp } from "@/components/pwa/install-app";
@@ -47,6 +48,7 @@ export default function Home() {
       </a>
 
       <InstallApp />
+      <Copyright />
       <TeamCacheRefresh />
       <GuestSession />
       <PwaRegister />

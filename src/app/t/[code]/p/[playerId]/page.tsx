@@ -2,6 +2,7 @@ import { ChevronLeft } from "lucide-react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { cache } from "react";
+import { Copyright } from "@/components/copyright";
 import { PlayerMatches, PlayerTotalsView } from "@/components/team-page/player-sections";
 import { SeasonLinks } from "@/components/team-page/season-links";
 import { t } from "@/lib/i18n";
@@ -58,6 +59,7 @@ export default async function PlayerPage({ params, searchParams }: PageProps<"/t
         potm={stats.potm}
         timeZone={page.team.timeZone}
       />
+      <Copyright />
     </main>
   );
 }

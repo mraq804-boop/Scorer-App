@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { cache } from "react";
+import { Copyright } from "@/components/copyright";
 import { LiveView } from "@/components/live/live-view";
 import { formatScoreLine } from "@/lib/i18n/cricket";
 import { CODE_RE } from "@/lib/local/code";
@@ -25,6 +26,7 @@ export default async function LivePage({ params }: PageProps<"/m/[code]">) {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pt-2 pb-safe">
       <LiveView key={live.match.id} match={live.match} initialEvents={live.events} />
+      <Copyright />
     </main>
   );
 }

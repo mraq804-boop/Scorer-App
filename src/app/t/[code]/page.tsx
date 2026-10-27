@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { cache } from "react";
+import { Copyright } from "@/components/copyright";
 import { SeasonLinks } from "@/components/team-page/season-links";
 import { ShareTeam } from "@/components/team-page/share-team";
 import { Leaderboards, NextFixtures, RecentResults, TeamHeader } from "@/components/team-page/team-sections";
@@ -43,6 +44,7 @@ export default async function TeamPublicPage({ params, searchParams }: PageProps
         playerHref={(playerId) => `/t/${page.team.code}/p/${playerId}${seasonQuery(seasonId)}`}
       />
       <ShareTeam text={t("team.link.shareText", { name: page.team.name, url })} />
+      <Copyright />
     </main>
   );
 }

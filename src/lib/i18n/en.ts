@@ -1,5 +1,6 @@
 export const en = {
   "app.name": "Cricket Scorer",
+  "app.copyright": "© 2026 AQ. All rights reserved.",
   "home.tagline": "Score a match on your phone. Share it live.",
   "home.newMatch": "New match",
   "pwa.updateReady": "A new version of Cricket Scorer is ready",

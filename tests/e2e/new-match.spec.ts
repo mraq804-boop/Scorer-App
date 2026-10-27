@@ -35,6 +35,11 @@ test("home offers a new match and an empty list", async ({ page }) => {
   await expect(page.getByText("No matches yet")).toBeVisible();
 });
 
+test("home shows the copyright", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByText("© 2026 AQ. All rights reserved.")).toBeVisible();
+});
+
 test("start a match with defaults", async ({ page }) => {
   await page.goto("/new");
   await fillNames(page, names);
