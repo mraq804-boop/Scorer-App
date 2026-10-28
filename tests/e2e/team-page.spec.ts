@@ -7,6 +7,10 @@ test("a malformed team code is a 404 without a database", async ({ page, request
   expect((await request.get("/t/not-a-code/opengraph-image")).status()).toBe(404);
 });
 
+test("a player poster for a malformed match code is a 404 without a database", async ({ request }) => {
+  expect((await request.get("/m/not-a-code/poster/x")).status()).toBe(404);
+});
+
 for (const route of ["t/[code]", "t/[code]/p/[playerId]"]) {
   test(`the public page ${route} ships no scoring, storage or sign-in code`, () => {
     const found = forbiddenIn(route);

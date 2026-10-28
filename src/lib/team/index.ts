@@ -2,7 +2,15 @@ export type * from "./types";
 export { teamOutcome, matchRecord, playerFigures } from "./match-record";
 export { hatTricksIn } from "./hat-tricks";
 export type { FormResult, Performer, PosterHeadline, PosterOutcome } from "./posters";
-export { matchPotm, posterHeadline, posterOutcome, suggestedPotm, teamForm, topPerformers } from "./posters";
+export {
+  matchPotm,
+  posterHeadline,
+  posterOutcome,
+  potmFromState,
+  suggestedPotm,
+  teamForm,
+  topPerformers,
+} from "./posters";
 export {
   FIFTY_RUNS,
   POINTS_FIFTY,

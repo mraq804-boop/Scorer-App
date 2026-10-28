@@ -119,6 +119,8 @@ describe("public team page sections", () => {
     );
     expect(matches).toContain("45* (30)");
     expect(matches).not.toContain("mmmm3333");
+    expect(matches).toContain('href="/m/mmmm2222/poster/sq-ali"');
+    expect(matches).toContain("Share poster");
   });
 });
 

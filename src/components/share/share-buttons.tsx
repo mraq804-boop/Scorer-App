@@ -6,6 +6,7 @@ import type { MouseEvent } from "react";
 import { toast } from "sonner";
 import { t } from "@/lib/i18n";
 import type { MatchState } from "@/lib/scoring";
+import { download, wasCancelled } from "@/lib/share/files";
 import { buildShareText } from "@/lib/share/text";
 import { matchUrl } from "@/lib/site-url";
 import { cn } from "@/lib/utils";
@@ -20,25 +21,9 @@ type ShareButtonsProps = {
 
 type Busy = "text" | "image" | null;
 
-const REVOKE_DELAY_MS = 1000;
 const NOTICE_MS = 10_000;
 const BUTTON =
   "inline-flex h-14 w-full items-center justify-center gap-2 rounded-2xl text-base font-bold outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-60 aria-disabled:opacity-60";
-
-function wasCancelled(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError";
-}
-
-function download(file: File): void {
-  const href = URL.createObjectURL(file);
-  const link = document.createElement("a");
-  link.href = href;
-  link.download = file.name;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(href), REVOKE_DELAY_MS);
-}
 
 function openWhatsApp(url: string): boolean {
   const opened = window.open(url, "_blank");

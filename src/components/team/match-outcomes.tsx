@@ -2,6 +2,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useId, useMemo, useState } from "react";
+import { ShareImageLink } from "@/components/share/share-image-link";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { t } from "@/lib/i18n";
@@ -20,6 +21,7 @@ type OutcomeRowProps = {
   match: TeamPageMatch;
   names: ReadonlyMap<string, string>;
   suggestion: string | null;
+  posterPlayer: string | null;
   when: string | null;
   onChange: (change: () => Promise<TeamResult<void>>) => Promise<string | undefined>;
   client: SupabaseClient;
@@ -29,7 +31,7 @@ function outcomeError(error: TeamError): string {
   return error === "not_in_xi" ? t("team.error.notInXi") : teamErrorMessage(error);
 }
 
-function OutcomeRow({ match, names, suggestion, when, onChange, client }: OutcomeRowProps) {
+function OutcomeRow({ match, names, suggestion, posterPlayer, when, onChange, client }: OutcomeRowProps) {
   const noResultId = useId();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -72,6 +74,15 @@ function OutcomeRow({ match, names, suggestion, when, onChange, client }: Outcom
             </option>
           ))}
         </SelectField>
+      )}
+      {counted && posterPlayer !== null && (
+        <ShareImageLink
+          href={`/m/${match.code}/poster/${posterPlayer}`}
+          fileName={`poster-${match.code}.png`}
+          className="h-11 self-start rounded-xl border-2 px-4 text-sm hover:bg-muted"
+        >
+          {t("share.potmPoster")}
+        </ShareImageLink>
       )}
       <div className="flex items-start justify-between gap-3">
         <span className="flex min-w-0 flex-col gap-1">
@@ -128,6 +139,11 @@ export function MatchOutcomes({ client, team }: MatchOutcomesProps) {
           ? null
           : (page.squad.find((player) => player.id === pick.playerId)?.name ?? null);
       },
+      posterPlayer: (match: TeamPageMatch) => {
+        const chosen = match.potmPlayerId;
+        if (chosen !== null && match.record?.xi.includes(chosen)) return chosen;
+        return suggested[match.code]?.playerId ?? null;
+      },
       when: (match: TeamPageMatch) => (match.record === null ? null : format.format(new Date(match.record.playedAt))),
     };
   }, [load]);
@@ -156,6 +172,7 @@ export function MatchOutcomes({ client, team }: MatchOutcomesProps) {
               match={match}
               names={view.names}
               suggestion={view.suggestion(match.code)}
+              posterPlayer={view.posterPlayer(match)}
               when={view.when(match)}
               onChange={onChange}
               client={client}

@@ -4,6 +4,9 @@ import { join } from "node:path";
 import { createElement } from "react";
 import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
+import { headlineLabel } from "@/lib/i18n/team";
+import type { MatchBrand } from "@/server/share/match";
+import { PLAYER_POSTER_SIZE, PlayerPoster, posterBrand } from "@/server/share/player-poster";
 import { PREVIEW_SIZE, PreviewImage } from "@/server/share/preview-image";
 import { renderPng } from "@/server/share/render";
 import { RESULT_POSTER_SIZE, ResultPoster } from "@/server/share/result-poster";
@@ -77,5 +80,60 @@ describe("team preview", { timeout: 30_000 }, () => {
     const stats = aggregateTeamStats(page.matches, page.squad, { seasonId: null, seasons: [], timeZone: "Asia/Karachi" });
     const bytes = await png("team-preview", createElement(TeamPreviewImage, { page, stats, images: new Map() }), PREVIEW_SIZE);
     expect([...bytes.slice(0, 4)]).toEqual(PNG);
+  });
+});
+
+describe("player poster", { timeout: 30_000 }, () => {
+  const DOT = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+  function teamBrand(overrides: Partial<NonNullable<MatchBrand>> = {}): NonNullable<MatchBrand> {
+    return {
+      side: "A",
+      colour: "ocean",
+      logoUrl: DOT,
+      potmPlayerId: null,
+      resultOverride: null,
+      xi: ["p-Ali", "p-Usman"],
+      photoUrlOf: () => null,
+      ...overrides,
+    };
+  }
+
+  it("the player poster renders with and without a photo", async () => {
+    const state = finishedMatch().state;
+    const withPhoto = await png(
+      "player-photo",
+      createElement(PlayerPoster, { state, brand: teamBrand({ photoUrlOf: () => DOT }), playerId: "p-Ali" }),
+      PLAYER_POSTER_SIZE,
+    );
+    const initialsOnly = await png(
+      "player-initials",
+      createElement(PlayerPoster, { state, brand: teamBrand({ logoUrl: null }), playerId: "p-Usman" }),
+      PLAYER_POSTER_SIZE,
+    );
+    expect([...withPhoto.slice(0, 4)]).toEqual(PNG);
+    expect([...initialsOnly.slice(0, 4)]).toEqual(PNG);
+    expect(PLAYER_POSTER_SIZE).toEqual({ width: 1080, height: 1350 });
+  });
+
+  it("the headline badge names the feat", () => {
+    expect(headlineLabel("potm")).toBe("Player of the match");
+    expect(headlineLabel("hundred")).toBe("Hundred");
+    expect(headlineLabel("fifty")).toBe("Fifty");
+    expect(headlineLabel("fiveWickets")).toBe("Five wickets");
+    expect(headlineLabel("hatTrick")).toBe("Hat-trick");
+    expect(headlineLabel("threeWickets")).toBe("Three wickets");
+  });
+
+  it("only squad players in the XI of a finished team match get a poster", () => {
+    const done = finishedMatch().state;
+    const live = new TestMatch().state;
+    expect(posterBrand({ code: "abcd2345", state: done, brand: teamBrand() }, "p-Ali")).not.toBeNull();
+    expect(posterBrand({ code: "abcd2345", state: done, brand: null }, "p-Ali")).toBeNull();
+    expect(posterBrand({ code: "abcd2345", state: done, brand: teamBrand() }, "p-Zain")).toBeNull();
+    expect(posterBrand({ code: "abcd2345", state: live, brand: teamBrand() }, "p-Ali")).toBeNull();
+    expect(
+      posterBrand({ code: "abcd2345", state: live, brand: teamBrand({ resultOverride: "no_result" }) }, "p-Ali"),
+    ).not.toBeNull();
   });
 });

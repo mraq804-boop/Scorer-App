@@ -1,4 +1,12 @@
-import type { LeaderboardKey, LeaderboardRow, PlayerMatchStats, PlayerTotals, TeamPageMatch, TeamRecord } from "@/lib/team";
+import type {
+  LeaderboardKey,
+  LeaderboardRow,
+  PlayerMatchStats,
+  PlayerTotals,
+  PosterHeadline,
+  TeamPageMatch,
+  TeamRecord,
+} from "@/lib/team";
 import { t } from "./index";
 import type { MessageKey } from "./index";
 
@@ -103,6 +111,19 @@ export function formatPerformer(stats: PlayerMatchStats): string {
   const bowled = bowling === null || bowling.legalBalls === 0 ? null : t("teamPage.best", { wickets: bowling.wickets, runs: bowling.runs });
   if (batted !== null && bowled !== null) return t("poster.figures", { batting: batted, bowling: bowled });
   return batted ?? bowled ?? "";
+}
+
+const HEADLINES: Record<PosterHeadline, MessageKey> = {
+  potm: "poster.headline.potm",
+  hundred: "poster.headline.hundred",
+  fifty: "poster.headline.fifty",
+  fiveWickets: "poster.headline.fiveWickets",
+  hatTrick: "poster.headline.hatTrick",
+  threeWickets: "poster.headline.threeWickets",
+};
+
+export function headlineLabel(headline: PosterHeadline): string {
+  return t(HEADLINES[headline]);
 }
 
 type BadgeKey = "hundreds" | "fifties" | "fiveFors" | "hatTricks" | "potm";

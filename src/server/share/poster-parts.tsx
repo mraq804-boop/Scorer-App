@@ -6,6 +6,7 @@ import { t } from "@/lib/i18n";
 import { formatNeed, formatResult } from "@/lib/i18n/cricket";
 import { chaseNeed, formatOvers } from "@/lib/scoring";
 import type { MatchState, TeamSide } from "@/lib/scoring";
+import { potmFromState } from "@/lib/team";
 import type { PosterOutcome } from "@/lib/team";
 import { imageText } from "@/lib/share/image-text";
 import { FONT_FAMILY, HALDI, INK, PAPER } from "./parts";
@@ -21,6 +22,10 @@ export function posterTeam(state: MatchState, side: TeamSide, brand: MatchBrand)
   const name = state.teams[side].name;
   const ours = brand !== null && brand.side === side;
   return { name, colour: colourFor(ours ? brand.colour : null, name), logoUrl: ours ? brand.logoUrl : null };
+}
+
+export function brandPotm(state: MatchState, brand: MatchBrand): string | null {
+  return brand === null ? null : potmFromState(state, brand.side, brand.xi, brand.potmPlayerId);
 }
 
 export function teamScore(state: MatchState, side: TeamSide): { score: string; overs: string | null; batted: boolean } {

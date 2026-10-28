@@ -5,11 +5,13 @@ import { Scoreboard } from "@/components/match/scoreboard";
 import { ThisOver } from "@/components/match/this-over";
 import { Scorecard } from "@/components/scorecard/scorecard";
 import { ShareButtons } from "@/components/share/share-buttons";
+import { ShareImageLink } from "@/components/share/share-image-link";
 import { t } from "@/lib/i18n";
 import { formatCommentary } from "@/lib/i18n/cricket";
 import { useLiveEvents } from "@/lib/live/use-live-events";
 import { currentInnings, replay } from "@/lib/scoring";
 import type { InningsState, MatchEvent, MatchState } from "@/lib/scoring";
+import { posterOutcome, potmFromState } from "@/lib/team/posters";
 import { cn } from "@/lib/utils";
 import type { LiveMatchHeader } from "@/server/live";
 import { LiveHero } from "./live-hero";
@@ -66,10 +68,18 @@ export function LiveView({ match, initialEvents }: LiveViewProps) {
   const innings = currentInnings(state) ?? state.innings.at(-1) ?? null;
   const [tab, setTab] = useState<Tab>("live");
   const id = useId();
+  const team = match.team ?? null;
+  const potm = useMemo(
+    () =>
+      team === null || posterOutcome(state, team.resultOverride).kind === "live"
+        ? null
+        : potmFromState(state, team.side, team.xi, team.potmPlayerId),
+    [state, team],
+  );
 
   return (
     <div className="flex flex-1 flex-col gap-4 pb-4">
-      <LiveHero state={state} team={match.team ?? null} title={match.title} />
+      <LiveHero state={state} team={team} title={match.title} />
       <div role="tablist" className="flex gap-1 rounded-xl bg-muted p-1">
         {TABS.map((item) => (
           <button
@@ -93,6 +103,15 @@ export function LiveView({ match, initialEvents }: LiveViewProps) {
         {tab === "live" ? <LivePanel state={state} innings={innings} /> : <Scorecard state={state} />}
       </div>
       <ShareButtons code={match.code} state={state} />
+      {potm !== null && (
+        <ShareImageLink
+          href={`/m/${match.code}/poster/${potm}`}
+          fileName={`poster-${match.code}.png`}
+          className="h-14 w-full rounded-2xl bg-haldi text-base font-bold text-black hover:bg-haldi/90"
+        >
+          {t("share.potmPoster")}
+        </ShareImageLink>
+      )}
     </div>
   );
 }

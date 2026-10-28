@@ -1,5 +1,5 @@
 import type { MatchState, TeamSide } from "@/lib/scoring";
-import { playerFigures } from "./match-record";
+import { matchRecord, playerFigures } from "./match-record";
 import { FIFTY_RUNS, FIVE_WICKETS, HUNDRED_RUNS, THREE_WICKETS, bestByPoints, matchPoints } from "./points";
 import type { PlayerMatchStats, TeamMatchRecord, TeamPageMatch } from "./types";
 
@@ -30,6 +30,10 @@ export function suggestedPotm(record: TeamMatchRecord, nameOf: (id: string) => s
 
 export function matchPotm(record: TeamMatchRecord, override: string | null, nameOf: (id: string) => string): string | null {
   return override !== null && record.xi.includes(override) ? override : suggestedPotm(record, nameOf);
+}
+
+export function potmFromState(state: MatchState, side: TeamSide, xi: string[], override: string | null): string | null {
+  return matchPotm(matchRecord(state, side, xi, ""), override, (id) => state.players[id]?.name ?? "");
 }
 
 export function topPerformers(state: MatchState, limit = 3): Performer[] {

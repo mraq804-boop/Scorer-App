@@ -3,12 +3,12 @@ import { colourFor } from "@/lib/brand";
 import { t } from "@/lib/i18n";
 import { formatPerformer } from "@/lib/i18n/team";
 import type { MatchState, TeamSide } from "@/lib/scoring";
-import { matchPotm, matchRecord, posterOutcome, topPerformers } from "@/lib/team";
+import { posterOutcome, topPerformers } from "@/lib/team";
 import type { Performer } from "@/lib/team";
 import { imageText } from "@/lib/share/image-text";
 import type { MatchBrand } from "./match";
 import { Brand, Clip, HALDI, LiveBadge, PAPER, WHITE } from "./parts";
-import { Disc, GOLD_INK, PALE_GOLD, Stage, bannerText, posterTeam, teamScore } from "./poster-parts";
+import { Disc, GOLD_INK, PALE_GOLD, Stage, bannerText, brandPotm, posterTeam, teamScore } from "./poster-parts";
 
 export const RESULT_POSTER_SIZE = { width: 1080, height: 1350 };
 
@@ -16,12 +16,6 @@ const SIDES: readonly TeamSide[] = ["A", "B"];
 const PANEL_HEIGHT = 470;
 
 type ResultPosterProps = { state: MatchState; brand: MatchBrand };
-
-function teamPotm(state: MatchState, brand: MatchBrand): string | null {
-  if (brand === null) return null;
-  const record = matchRecord(state, brand.side, brand.xi, "");
-  return matchPotm(record, brand.potmPlayerId, (id) => state.players[id]?.name ?? "");
-}
 
 function Panel({ state, side, brand }: { state: MatchState; side: TeamSide; brand: MatchBrand }) {
   const team = posterTeam(state, side, brand);
@@ -78,7 +72,7 @@ function PerformerRow({ performer, state, brand, potm }: { performer: Performer;
 export function ResultPoster({ state, brand }: ResultPosterProps) {
   const outcome = posterOutcome(state, brand?.resultOverride ?? null);
   const performers = topPerformers(state);
-  const potm = teamPotm(state, brand);
+  const potm = brandPotm(state, brand);
   const { width, height } = RESULT_POSTER_SIZE;
   return (
     <Stage width={width} height={height} confetti={outcome.kind === "won"}>

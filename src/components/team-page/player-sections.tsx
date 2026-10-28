@@ -1,4 +1,5 @@
 import { Star } from "lucide-react";
+import { ShareImageLink } from "@/components/share/share-image-link";
 import { t } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n";
 import type { TeamColour } from "@/lib/brand";
@@ -133,7 +134,7 @@ export function PlayerMatches({ matches, playerId, potm, timeZone }: PlayerMatch
       ) : (
         <ul className="flex flex-col gap-2">
           {played.map((match) => (
-            <li key={match.code}>
+            <li key={match.code} className="flex flex-col">
               <MatchLink match={match} timeZone={timeZone}>
                 <span className="num flex flex-wrap gap-x-3 text-sm">
                   {figures(match.record?.players.find((stats) => stats.playerId === playerId)).map((part) => (
@@ -147,6 +148,13 @@ export function PlayerMatches({ matches, playerId, potm, timeZone }: PlayerMatch
                   </span>
                 )}
               </MatchLink>
+              <ShareImageLink
+                href={`/m/${match.code}/poster/${playerId}`}
+                fileName={`poster-${match.code}.png`}
+                className="h-11 self-end rounded-xl px-3 text-sm text-primary hover:bg-muted"
+              >
+                {t("share.poster")}
+              </ShareImageLink>
             </li>
           ))}
         </ul>
