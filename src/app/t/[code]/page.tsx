@@ -5,7 +5,7 @@ import { Copyright } from "@/components/copyright";
 import { SeasonLinks } from "@/components/team-page/season-links";
 import { ShareTeam } from "@/components/team-page/share-team";
 import { TeamHero } from "@/components/team-page/team-hero";
-import { Leaderboards, NextFixtures, RecentResults } from "@/components/team-page/team-sections";
+import { Leaderboards, Milestones, NextFixtures, RecentResults } from "@/components/team-page/team-sections";
 import { colourFor, photoUrl } from "@/lib/brand";
 import { t } from "@/lib/i18n";
 import { teamForm } from "@/lib/team";
@@ -36,6 +36,9 @@ export default async function TeamPublicPage({ params, searchParams }: PageProps
   const photos = new Map(page.squad.map((player) => [player.id, player.photoVersion]));
   const matches = matchesInSeason(page, seasonId);
   const url = teamUrl(page.team.code);
+  const colour = colourFor(page.team.colour, page.team.name);
+  const playerHref = (playerId: string) => `/t/${page.team.code}/p/${playerId}${seasonQuery(seasonId)}`;
+  const photoOf = (playerId: string) => photoUrl(page.team.code, playerId, photos.get(playerId));
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-6 px-4 pt-6 pb-10">
@@ -43,13 +46,8 @@ export default async function TeamPublicPage({ params, searchParams }: PageProps
       <SeasonLinks basePath={`/t/${page.team.code}`} seasons={page.seasons} selected={seasonId} />
       <NextFixtures fixtures={page.fixtures} timeZone={page.team.timeZone} now={now} />
       <RecentResults matches={matches} timeZone={page.team.timeZone} />
-      <Leaderboards
-        stats={stats}
-        names={names}
-        playerHref={(playerId) => `/t/${page.team.code}/p/${playerId}${seasonQuery(seasonId)}`}
-        colour={colourFor(page.team.colour, page.team.name)}
-        photoOf={(playerId) => photoUrl(page.team.code, playerId, photos.get(playerId))}
-      />
+      <Milestones stats={stats} names={names} playerHref={playerHref} colour={colour} photoOf={photoOf} />
+      <Leaderboards stats={stats} names={names} playerHref={playerHref} colour={colour} photoOf={photoOf} />
       <ShareTeam text={t("team.link.shareText", { name: page.team.name, url })} />
       <Copyright />
     </main>

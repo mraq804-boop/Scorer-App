@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { PlayerHero, PlayerMatches, PlayerTotalsView } from "@/components/team-page/player-sections";
 import { TeamHero } from "@/components/team-page/team-hero";
-import { Leaderboards, RecentResults } from "@/components/team-page/team-sections";
+import { Leaderboards, Milestones, RecentResults } from "@/components/team-page/team-sections";
 import { colourFor } from "@/lib/brand";
 import { aggregateTeamStats, parseTeamPage } from "@/lib/team";
 import type { PlayerMatchStats, PlayerTotals, TeamPageData } from "@/lib/team";
@@ -179,5 +179,37 @@ describe("loud team page", () => {
     expect(html).toContain("2 fifties");
     expect(html).toContain("1 hat-trick");
     expect(html).toContain("Ali");
+  });
+
+  it("counts three-fors apart from five-fors", () => {
+    const totals = { ...(stats.players.find((p) => p.playerId === HAMZA) as PlayerTotals), threeFors: 3, fiveFors: 1 };
+    const html = render(
+      createElement(PlayerHero, { player: page.squad[1], totals, colour: colourFor("ocean", "Lions"), photoUrl: null }),
+    );
+    expect(html).toContain("2 three-fors");
+    expect(html).toContain("1 five-for");
+  });
+
+  it("lists each player's milestones as badge chips linking to the player", () => {
+    const html = render(
+      createElement(Milestones, {
+        stats,
+        names,
+        playerHref: (id: string) => `/t/abcd2345/p/${id}`,
+        colour: colourFor("ocean", "Lions"),
+        photoOf: () => null,
+      }),
+    );
+    expect(html).toContain("Milestones");
+    expect(html).toContain("1 three-for");
+    expect(html).toContain('href="/t/abcd2345/p/sq-hamza"');
+  });
+
+  it("shows no milestones section before anyone has one", () => {
+    const empty = aggregateTeamStats([], page.squad, { seasonId: null, seasons: [], timeZone: "Asia/Karachi" });
+    const html = render(
+      createElement(Milestones, { stats: empty, names, playerHref: () => "#", colour: colourFor("ocean", "Lions"), photoOf: () => null }),
+    );
+    expect(html).toBe("");
   });
 });

@@ -126,13 +126,14 @@ export function headlineLabel(headline: PosterHeadline): string {
   return t(HEADLINES[headline]);
 }
 
-type BadgeKey = "hundreds" | "fifties" | "fiveFors" | "hatTricks" | "potm";
+type BadgeKey = "hundreds" | "fifties" | "fiveFors" | "threeFors" | "hatTricks" | "potm";
 
 export function playerBadges(totals: PlayerTotals): { key: BadgeKey; text: string }[] {
   const counts: [BadgeKey, number][] = [
     ["hundreds", totals.hundreds],
     ["fifties", totals.fifties],
     ["fiveFors", totals.fiveFors],
+    ["threeFors", totals.threeFors - totals.fiveFors],
     ["hatTricks", totals.hatTricks],
     ["potm", totals.potmAwards],
   ];

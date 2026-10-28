@@ -2,7 +2,13 @@ import { Crown } from "lucide-react";
 import { colourFor } from "@/lib/brand";
 import type { TeamColour } from "@/lib/brand";
 import { t } from "@/lib/i18n";
-import { LEADERBOARD_GROUPS, LEADERBOARD_TITLES, formatFixtureTime, formatLeaderboardValue } from "@/lib/i18n/team";
+import {
+  LEADERBOARD_GROUPS,
+  LEADERBOARD_TITLES,
+  formatFixtureTime,
+  formatLeaderboardValue,
+  playerBadges,
+} from "@/lib/i18n/team";
 import type { Fixture, LeaderboardKey, LeaderboardRow, TeamPageMatch, TeamStats } from "@/lib/team";
 import { Avatar } from "./avatar";
 import { MatchLink } from "./match-list";
@@ -115,6 +121,55 @@ function Board({ board, rows, names, playerHref, look }: BoardProps) {
         ))}
       </ol>
     </div>
+  );
+}
+
+type MilestonesProps = {
+  stats: TeamStats;
+  names: ReadonlyMap<string, string>;
+  playerHref: (playerId: string) => string;
+  colour: TeamColour;
+  photoOf: (playerId: string) => string | null;
+};
+
+export function Milestones({ stats, names, playerHref, colour, photoOf }: MilestonesProps) {
+  const players = stats.players
+    .filter((totals) => names.has(totals.playerId))
+    .map((totals) => ({ playerId: totals.playerId, badges: playerBadges(totals) }))
+    .filter((entry) => entry.badges.length > 0)
+    .sort((a, b) => b.badges.length - a.badges.length);
+  if (players.length === 0) return null;
+  return (
+    <section aria-labelledby="milestones" className="flex flex-col gap-2">
+      <h2 id="milestones" className="text-lg font-bold">
+        {t("teamPage.milestones")}
+      </h2>
+      <ul className="flex flex-col gap-2">
+        {players.map(({ playerId, badges }) => {
+          const name = names.get(playerId) ?? "";
+          return (
+            <li key={playerId}>
+              <a
+                href={playerHref(playerId)}
+                className="flex items-center gap-3 rounded-2xl border bg-card p-3 outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <Avatar name={name} url={photoOf(playerId)} size={40} colour={colour} />
+                <span className="flex min-w-0 flex-col gap-1.5">
+                  <bdi className="truncate font-semibold">{name}</bdi>
+                  <span className="flex flex-wrap gap-1.5">
+                    {badges.map((badge) => (
+                      <span key={badge.key} className="rounded-full bg-haldi px-2.5 py-0.5 text-xs font-bold text-[#412402]">
+                        {badge.text}
+                      </span>
+                    ))}
+                  </span>
+                </span>
+              </a>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
