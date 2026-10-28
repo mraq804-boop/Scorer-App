@@ -40,12 +40,15 @@ async function stubRpc(page: Page, name: string, status = 200) {
 }
 
 const picture = { name: "logo.png", mimeType: "image/png", buffer: TINY_PNG };
+const NOW = Date.UTC(2026, 9, 28, 12, 0, 0);
+const VERSION = Math.floor((NOW - Date.UTC(2026, 0, 1)) / 1000);
 
 test("an owner picks a colour and uploads a logo", async ({ page }) => {
   await signIn(page, team());
   const storage = await stubStorage(page);
   const colours = await stubRpc(page, "set_team_colour");
   const logos = await stubRpc(page, "set_team_logo");
+  await page.clock.setFixedTime(NOW);
   await page.goto("/team");
   const look = page.getByRole("region", { name: "Team look" });
 
@@ -53,26 +56,28 @@ test("an owner picks a colour and uploads a logo", async ({ page }) => {
   await expect.poll(() => colours).toEqual([{ p_colour: "ocean" }]);
 
   await look.getByLabel("Upload logo").setInputFiles(picture);
-  await expect.poll(() => logos).toEqual([{ p_version: 1 }]);
-  expect(storage.uploads).toEqual(["teams/abcd2345/logo-1.jpg"]);
+  await expect.poll(() => logos).toEqual([{ p_version: VERSION }]);
+  expect(storage.uploads).toEqual([`teams/abcd2345/logo-${VERSION}.jpg`]);
 });
 
 test("an owner adds a player photo", async ({ page }) => {
   await signIn(page, team());
   const storage = await stubStorage(page);
   const photos = await stubRpc(page, "set_player_photo");
+  await page.clock.setFixedTime(NOW);
   await page.goto("/team");
 
   await page.getByRole("region", { name: "Squad" }).getByLabel("Add a photo of Ali").setInputFiles(picture);
 
-  await expect.poll(() => photos).toEqual([{ p_player: ALI, p_version: 1 }]);
-  expect(storage.uploads).toEqual([`teams/abcd2345/players/${ALI}-1.jpg`]);
+  await expect.poll(() => photos).toEqual([{ p_player: ALI, p_version: VERSION }]);
+  expect(storage.uploads).toEqual([`teams/abcd2345/players/${ALI}-${VERSION}.jpg`]);
 });
 
 test("a failed save keeps the old logo", async ({ page }) => {
   await signIn(page, team({ logoVersion: 2 }));
   const storage = await stubStorage(page);
   await stubRpc(page, "set_team_logo", 500);
+  await page.clock.setFixedTime(NOW);
   await page.goto("/team");
   const look = page.getByRole("region", { name: "Team look" });
   await expect(look.getByRole("img", { name: "Lions logo" })).toHaveAttribute("src", /\/teams\/abcd2345\/logo-2\.jpg$/);
@@ -80,8 +85,8 @@ test("a failed save keeps the old logo", async ({ page }) => {
   await look.getByLabel("Change logo").setInputFiles(picture);
 
   await expect(look.getByRole("alert")).toBeVisible();
-  expect(storage.uploads).toEqual(["teams/abcd2345/logo-3.jpg"]);
-  await expect.poll(() => storage.removed).toEqual(["teams/abcd2345/logo-3.jpg"]);
+  expect(storage.uploads).toEqual([`teams/abcd2345/logo-${VERSION}.jpg`]);
+  expect(storage.removed).toEqual([]);
   await expect(look.getByRole("img", { name: "Lions logo" })).toHaveAttribute("src", /\/teams\/abcd2345\/logo-2\.jpg$/);
 });
 

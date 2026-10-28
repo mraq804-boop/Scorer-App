@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { COLOUR_KEYS, colourFor, initials, isColourKey, logoPath, logoUrl, photoPath, photoUrl } from "@/lib/brand";
+import {
+  COLOUR_KEYS,
+  colourFor,
+  initials,
+  isColourKey,
+  logoPath,
+  logoUrl,
+  nextPictureVersion,
+  photoPath,
+  photoUrl,
+} from "@/lib/brand";
 import { INK } from "@/lib/brand-mark";
 
 afterEach(() => {
@@ -48,5 +58,28 @@ describe("media paths", () => {
     expect(photoUrl("abcd2345", "p-1", 1)).toBe("https://ref.supabase.co/storage/v1/object/public/team-media/teams/abcd2345/players/p-1-1.jpg");
     expect(logoUrl("abcd2345", null)).toBeNull();
     expect(photoUrl("abcd2345", "p-1", undefined)).toBeNull();
+  });
+});
+
+describe("nextPictureVersion", () => {
+  const now = Date.UTC(2026, 9, 28, 12, 0, 0);
+  const secondsSince2026 = Math.floor((now - Date.UTC(2026, 0, 1)) / 1000);
+
+  it("never reuses the number of a removed picture", () => {
+    expect(nextPictureVersion(null, now)).toBe(secondsSince2026);
+    expect(nextPictureVersion(undefined, now)).toBe(secondsSince2026);
+  });
+
+  it("moves past the current picture even when the clock is behind it", () => {
+    expect(nextPictureVersion(secondsSince2026 + 50, now)).toBe(secondsSince2026 + 51);
+    expect(nextPictureVersion(3, now)).toBe(secondsSince2026);
+  });
+
+  it("gives a fresh number for each retry a second apart", () => {
+    expect(nextPictureVersion(null, now + 1000)).toBe(nextPictureVersion(null, now) + 1);
+  });
+
+  it("stays inside a database int for decades", () => {
+    expect(nextPictureVersion(null, Date.UTC(2090, 0, 1))).toBeLessThan(2 ** 31);
   });
 });

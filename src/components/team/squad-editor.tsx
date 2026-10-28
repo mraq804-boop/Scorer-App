@@ -8,7 +8,7 @@ import { Avatar } from "@/components/team-page/avatar";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { colourFor, photoPath, photoUrl } from "@/lib/brand";
+import { colourFor, nextPictureVersion, photoPath, photoUrl } from "@/lib/brand";
 import { t } from "@/lib/i18n";
 import type { CachedTeam } from "@/lib/local/db";
 import type { SquadPlayer, SquadRole } from "@/lib/team";
@@ -163,7 +163,7 @@ export function SquadEditor({ client, team, onChanged }: SquadEditorProps) {
   async function savePhoto(player: SquadPlayer, blob: Blob): Promise<void> {
     setPhotoError(undefined);
     const current = player.photoVersion ?? null;
-    const version = (current ?? 0) + 1;
+    const version = nextPictureVersion(current);
     const result = await replaceTeamPicture(client, {
       newPath: photoPath(team.code, player.id, version),
       oldPath: current === null ? null : photoPath(team.code, player.id, current),

@@ -5,7 +5,7 @@ import { Check } from "lucide-react";
 import { useId, useState } from "react";
 import { Avatar } from "@/components/team-page/avatar";
 import { Button } from "@/components/ui/button";
-import { COLOUR_KEYS, colourFor, logoPath, logoUrl } from "@/lib/brand";
+import { COLOUR_KEYS, colourFor, logoPath, logoUrl, nextPictureVersion } from "@/lib/brand";
 import { t } from "@/lib/i18n";
 import type { CachedTeam } from "@/lib/local/db";
 import { LOGO_SIZE } from "@/lib/media/prepare-image";
@@ -43,7 +43,7 @@ export function BrandEditor({ client, team, onChanged }: BrandEditorProps) {
 
   const uploadLogo = (blob: Blob) =>
     run(async () => {
-      const version = (current ?? 0) + 1;
+      const version = nextPictureVersion(current);
       const result = await replaceTeamPicture(client, {
         newPath: logoPath(team.code, version),
         oldPath: current === null ? null : logoPath(team.code, current),

@@ -793,6 +793,31 @@ describe("team media storage", () => {
     await expectDbError(insert("anon", `teams/${lions.code}/logo-3.jpg`), /row-level security|permission denied/);
   });
 
+  it("lets only the owner delete a picture, the way Storage removes files", async () => {
+    const name = `teams/${lions.code}/logo-7.jpg`;
+    await insert(OWNER, name);
+    const remove = (actor: Actor) =>
+      rpc<{ name: string }>(
+        actor,
+        `delete from storage.objects where bucket_id = 'team-media' and name = any($1) returning name`,
+        [[name]],
+      );
+    expect(await remove(OTHER_OWNER)).toEqual([]);
+    expect(await remove(SCORER)).toEqual([]);
+    expect(await remove(STRANGER)).toEqual([]);
+    expect(await remove(OWNER)).toEqual([{ name }]);
+  });
+
+  it("lets only the owner see their own pictures' rows", async () => {
+    const name = `teams/${lions.code}/players/${ali.id}-9.jpg`;
+    await insert(OWNER, name);
+    const look = (actor: Actor) =>
+      rpc<{ name: string }>(actor, `select name from storage.objects where bucket_id = 'team-media' and name = $1`, [name]);
+    expect(await look(OWNER)).toEqual([{ name }]);
+    expect(await look(OTHER_OWNER)).toEqual([]);
+    expect(await look(GUEST)).toEqual([]);
+  });
+
   it("makes the bucket public, JPEG only and at most 300 KB", async () => {
     const [bucket] = await rows<{ public: boolean; file_size_limit: number | string; allowed_mime_types: string[] }>(
       `select public, file_size_limit, allowed_mime_types from storage.buckets where id = 'team-media'`,

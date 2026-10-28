@@ -1045,6 +1045,13 @@ values ('team-media', 'team-media', true, 307200, '{image/jpeg}')
 on conflict (id) do update
 set public = true, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
 
+create policy team_media_owner_select on storage.objects for select to authenticated
+  using (
+    bucket_id = 'team-media'
+    and (storage.foldername(name))[1] = 'teams'
+    and (storage.foldername(name))[2] = (select public.owned_team_code())
+  );
+
 create policy team_media_owner_insert on storage.objects for insert to authenticated
   with check (
     bucket_id = 'team-media'

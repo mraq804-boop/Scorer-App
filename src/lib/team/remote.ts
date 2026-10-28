@@ -264,7 +264,7 @@ export async function replaceTeamPicture(client: SupabaseClient, change: Picture
   }
   const saved = await change.save();
   if (!saved.ok) {
-    await deleteTeamPicture(client, change.newPath);
+    if (saved.error !== "network") await deleteTeamPicture(client, change.newPath);
     return saved;
   }
   if (change.oldPath !== null) await deleteTeamPicture(client, change.oldPath);

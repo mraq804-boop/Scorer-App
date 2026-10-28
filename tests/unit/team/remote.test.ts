@@ -806,7 +806,18 @@ describe("replaceTeamPicture", () => {
     expect(calls).toEqual(["upload teams/x/logo-2.jpg"]);
   });
 
-  it("removes the new picture and keeps the old one when saving fails", async () => {
+  it("removes the new picture and keeps the old one when the save is refused", async () => {
+    const { client, calls } = storageClient();
+    const save = vi.fn(async () => ({ ok: false as const, error: "not_team_owner" as const }));
+
+    expect(await replaceTeamPicture(client, { newPath: "teams/x/logo-2.jpg", oldPath: "teams/x/logo-1.jpg", blob, save })).toEqual({
+      ok: false,
+      error: "not_team_owner",
+    });
+    expect(calls).toEqual(["upload teams/x/logo-2.jpg", "remove teams/x/logo-2.jpg"]);
+  });
+
+  it("keeps both pictures when the save's answer is lost, because the save may have gone through", async () => {
     const { client, calls } = storageClient();
     const save = vi.fn(async () => ({ ok: false as const, error: "network" as const }));
 
@@ -814,6 +825,6 @@ describe("replaceTeamPicture", () => {
       ok: false,
       error: "network",
     });
-    expect(calls).toEqual(["upload teams/x/logo-2.jpg", "remove teams/x/logo-2.jpg"]);
+    expect(calls).toEqual(["upload teams/x/logo-2.jpg"]);
   });
 });
