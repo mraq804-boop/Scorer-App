@@ -6,12 +6,13 @@ import { ThisOver } from "@/components/match/this-over";
 import { Scorecard } from "@/components/scorecard/scorecard";
 import { ShareButtons } from "@/components/share/share-buttons";
 import { t } from "@/lib/i18n";
-import { formatCommentary, formatResult } from "@/lib/i18n/cricket";
+import { formatCommentary } from "@/lib/i18n/cricket";
 import { useLiveEvents } from "@/lib/live/use-live-events";
 import { currentInnings, replay } from "@/lib/scoring";
 import type { InningsState, MatchEvent, MatchState } from "@/lib/scoring";
 import { cn } from "@/lib/utils";
 import type { LiveMatchHeader } from "@/server/live";
+import { LiveHero } from "./live-hero";
 
 type Tab = "live" | "scorecard";
 
@@ -53,11 +54,6 @@ function LivePanel({ state, innings }: { state: MatchState; innings: InningsStat
           {t("live.inningsBreak")}
         </p>
       )}
-      {state.result !== null && (
-        <p role="status" className="rounded-2xl bg-success-soft p-4 text-center text-lg font-bold">
-          {formatResult(state.result, state.teams)}
-        </p>
-      )}
       <ThisOver innings={innings} ballsPerOver={state.rules.ballsPerOver} />
       <Commentary state={state} />
     </div>
@@ -73,9 +69,7 @@ export function LiveView({ match, initialEvents }: LiveViewProps) {
 
   return (
     <div className="flex flex-1 flex-col gap-4 pb-4">
-      <h1 className="flex min-h-12 min-w-0 items-center text-lg font-bold">
-        <bdi className="block min-w-0 truncate">{match.title}</bdi>
-      </h1>
+      <LiveHero state={state} team={match.team ?? null} title={match.title} />
       <div role="tablist" className="flex gap-1 rounded-xl bg-muted p-1">
         {TABS.map((item) => (
           <button

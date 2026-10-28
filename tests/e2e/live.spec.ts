@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Browser, BrowserContext, Page } from "@playwright/test";
+import { forbiddenIn } from "./support/bundle";
 import { matchCode, runs, score, startMatch } from "./support/scoring";
 
 const POLL_MS = Number(process.env.NEXT_PUBLIC_POLL_MS ?? 5000);
@@ -41,6 +42,13 @@ test("a malformed code is a 404 without a database", async ({ page, request }) =
   expect(response?.status()).toBe(404);
   expect((await request.get("/api/m/not-a-code/events")).status()).toBe(404);
   expect((await request.get("/api/m/abcd2345/events?after=-1")).status()).toBe(400);
+});
+
+test("the live page ships no scoring, storage or sign-in code and loads realtime on demand", () => {
+  const found = forbiddenIn("m/[code]", { realtime: /phx_join|phx_reply/ });
+  expect(found.size).toBeGreaterThan(0);
+  expect(found.modules).toEqual([]);
+  expect(found.code).toEqual([]);
 });
 
 test.describe("with a backend", () => {

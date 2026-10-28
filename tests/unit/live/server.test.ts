@@ -26,7 +26,7 @@ describe("getLiveMatch", () => {
   it("calls get_live_match with the code and returns the match with its events", async () => {
     rpc.mockResolvedValue({ data: { match: HEADER, events: [{ id: "e1", seq: 1 }] }, error: null });
 
-    expect(await getLiveMatch("abcd2345")).toEqual({ match: HEADER, events: [{ id: "e1", seq: 1 }] });
+    expect(await getLiveMatch("abcd2345")).toEqual({ match: { ...HEADER, team: null }, events: [{ id: "e1", seq: 1 }] });
     expect(rpc).toHaveBeenCalledWith("get_live_match", { p_code: "abcd2345" });
   });
 
@@ -42,6 +42,58 @@ describe("getLiveMatch", () => {
 
     rpc.mockResolvedValueOnce({ data: { match: HEADER }, error: null });
     await expect(getLiveMatch("abcd2345")).rejects.toThrow("unexpected shape");
+  });
+});
+
+describe("getLiveMatch team", () => {
+  const TEAM = {
+    code: "lion2345",
+    name: "Lions",
+    colour: "ocean",
+    logoVersion: 2,
+    side: "A",
+    potmPlayerId: "sq-ali",
+    resultOverride: null,
+    xi: ["sq-ali", "sq-usman"],
+    photos: { "sq-ali": 3 },
+  };
+
+  async function teamOf(team: unknown) {
+    rpc.mockResolvedValue({ data: { match: { ...HEADER, team }, events: [] }, error: null });
+    return (await getLiveMatch("abcd2345"))?.match.team;
+  }
+
+  it("returns the brand of a team match", async () => {
+    expect(await teamOf(TEAM)).toEqual(TEAM);
+  });
+
+  it("treats a missing or broken team as a plain match", async () => {
+    expect(await teamOf(undefined)).toBeNull();
+    expect(await teamOf(null)).toBeNull();
+    expect(await teamOf({ ...TEAM, side: "C" })).toBeNull();
+    expect(await teamOf({ ...TEAM, code: 7 })).toBeNull();
+  });
+
+  it("drops brand fields it does not recognise", async () => {
+    expect(
+      await teamOf({
+        ...TEAM,
+        colour: "neon",
+        logoVersion: "2",
+        potmPlayerId: 5,
+        resultOverride: "abandoned",
+        xi: ["sq-ali", 4],
+        photos: { "sq-ali": 3, "sq-usman": "x", "sq-bad": -1 },
+      }),
+    ).toEqual({
+      ...TEAM,
+      colour: null,
+      logoVersion: null,
+      potmPlayerId: null,
+      resultOverride: null,
+      xi: ["sq-ali"],
+      photos: { "sq-ali": 3 },
+    });
   });
 });
 
