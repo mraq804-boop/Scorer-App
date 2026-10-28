@@ -9,9 +9,11 @@ import type { PlayerMatchStats } from "@/lib/team";
 import { imageText } from "@/lib/share/image-text";
 import type { MatchBrand, SharedMatch } from "./match";
 import { Brand, Clip, HALDI, PAPER, WHITE } from "./parts";
-import { Disc, GOLD_INK, PALE_GOLD, Stage, bannerText, brandPotm } from "./poster-parts";
+import { Disc, GOLD_INK, PALE_GOLD, Stage, bannerText, brandPotm, fitFontSize } from "./poster-parts";
 
 export const PLAYER_POSTER_SIZE = { width: 1080, height: 1350 };
+
+const BANNER_WIDTH = 896;
 
 export type TeamBrand = NonNullable<MatchBrand>;
 
@@ -57,6 +59,7 @@ export function PlayerPoster({ state, brand, playerId }: PlayerPosterProps) {
   const headline = stats === undefined ? null : posterHeadline(stats, potm);
   const figures = figuresOf(stats, state.rules.ballsPerOver);
   const outcome = posterOutcome(state, brand.resultOverride);
+  const banner = bannerText(state, outcome);
   return (
     <Stage width={width} height={height} confetti>
       <div
@@ -121,8 +124,8 @@ export function PlayerPoster({ state, brand, playerId }: PlayerPosterProps) {
       </div>
       <div style={{ display: "flex", justifyContent: "center", padding: "28px 56px 0" }}>
         <div style={{ display: "flex", maxWidth: "100%", padding: "10px 36px", borderRadius: 40, background: HALDI }}>
-          <Clip size={36} weight={700} color={GOLD_INK} align="center">
-            {bannerText(state, outcome)}
+          <Clip size={fitFontSize(banner, 36, 24, BANNER_WIDTH)} weight={700} color={GOLD_INK} align="center">
+            {banner}
           </Clip>
         </div>
       </div>

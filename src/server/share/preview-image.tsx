@@ -4,11 +4,12 @@ import { posterOutcome } from "@/lib/team";
 import { imageText } from "@/lib/share/image-text";
 import type { MatchBrand } from "./match";
 import { Brand, Clip, HALDI, LiveBadge, PAPER, WHITE } from "./parts";
-import { Disc, GOLD_INK, Stage, bannerText, posterTeam, teamScore } from "./poster-parts";
+import { Disc, GOLD_INK, Stage, bannerText, fitFontSize, posterTeam, teamScore } from "./poster-parts";
 
 export const PREVIEW_SIZE = { width: 1200, height: 630 };
 
 const SIDES: readonly TeamSide[] = ["A", "B"];
+const BANNER_WIDTH = 908;
 
 function TeamRow({ state, side, brand }: { state: MatchState; side: TeamSide; brand: MatchBrand }) {
   const team = posterTeam(state, side, brand);
@@ -38,6 +39,7 @@ function TeamRow({ state, side, brand }: { state: MatchState; side: TeamSide; br
 export function PreviewImage({ state, brand }: { state: MatchState; brand: MatchBrand }) {
   const outcome = posterOutcome(state, brand?.resultOverride ?? null);
   const { width, height } = PREVIEW_SIZE;
+  const banner = bannerText(state, outcome);
   return (
     <Stage width={width} height={height} confetti={outcome.kind === "won"}>
       <div style={{ display: "flex", flexDirection: "column", flex: 1, gap: 22, padding: "36px 48px" }}>
@@ -60,8 +62,8 @@ export function PreviewImage({ state, brand }: { state: MatchState; brand: Match
             marginRight: 140,
           }}
         >
-          <Clip size={40} weight={700} color={GOLD_INK}>
-            {bannerText(state, outcome)}
+          <Clip size={fitFontSize(banner, 40, 26, BANNER_WIDTH)} weight={700} color={GOLD_INK}>
+            {banner}
           </Clip>
         </div>
       </div>

@@ -8,12 +8,13 @@ import type { Performer } from "@/lib/team";
 import { imageText } from "@/lib/share/image-text";
 import type { MatchBrand } from "./match";
 import { Brand, Clip, HALDI, LiveBadge, PAPER, WHITE } from "./parts";
-import { Disc, GOLD_INK, PALE_GOLD, Stage, bannerText, brandPotm, posterTeam, teamScore } from "./poster-parts";
+import { Disc, GOLD_INK, PALE_GOLD, Stage, bannerText, brandPotm, fitFontSize, posterTeam, teamScore } from "./poster-parts";
 
 export const RESULT_POSTER_SIZE = { width: 1080, height: 1350 };
 
 const SIDES: readonly TeamSide[] = ["A", "B"];
 const PANEL_HEIGHT = 470;
+const BANNER_WIDTH = 834;
 
 type ResultPosterProps = { state: MatchState; brand: MatchBrand };
 
@@ -73,6 +74,7 @@ export function ResultPoster({ state, brand }: ResultPosterProps) {
   const outcome = posterOutcome(state, brand?.resultOverride ?? null);
   const performers = topPerformers(state);
   const potm = brandPotm(state, brand);
+  const banner = bannerText(state, outcome);
   const { width, height } = RESULT_POSTER_SIZE;
   return (
     <Stage width={width} height={height} confetti={outcome.kind === "won"}>
@@ -101,8 +103,8 @@ export function ResultPoster({ state, brand }: ResultPosterProps) {
         }}
       >
         <Trophy width={52} height={56} colour={GOLD_INK} />
-        <Clip size={46} weight={700} color={GOLD_INK}>
-          {bannerText(state, outcome)}
+        <Clip size={fitFontSize(banner, 46, 28, BANNER_WIDTH)} weight={700} color={GOLD_INK}>
+          {banner}
         </Clip>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 22, padding: "44px 56px 0" }}>

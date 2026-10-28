@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 import { headlineLabel } from "@/lib/i18n/team";
 import type { MatchBrand } from "@/server/share/match";
 import { PLAYER_POSTER_SIZE, PlayerPoster, posterBrand } from "@/server/share/player-poster";
+import { bannerText, brandPotm, fitFontSize } from "@/server/share/poster-parts";
+import { posterOutcome } from "@/lib/team";
 import { PREVIEW_SIZE, PreviewImage } from "@/server/share/preview-image";
 import { renderPng } from "@/server/share/render";
 import { RESULT_POSTER_SIZE, ResultPoster } from "@/server/share/result-poster";
@@ -125,6 +127,13 @@ describe("player poster", { timeout: 30_000 }, () => {
     expect(headlineLabel("threeWickets")).toBe("Three wickets");
   });
 
+  it("names no Player of the match while the match is live", () => {
+    const live = new TestMatch();
+    live.ball({ runs: 4, boundary: true });
+    expect(brandPotm(live.state, teamBrand())).toBeNull();
+    expect(brandPotm(finishedMatch().state, teamBrand())).not.toBeNull();
+  });
+
   it("only squad players in the XI of a finished team match get a poster", () => {
     const done = finishedMatch().state;
     const live = new TestMatch().state;
@@ -135,5 +144,36 @@ describe("player poster", { timeout: 30_000 }, () => {
     expect(
       posterBrand({ code: "abcd2345", state: live, brand: teamBrand({ resultOverride: "no_result" }) }, "p-Ali"),
     ).not.toBeNull();
+  });
+});
+
+describe("result banner size", () => {
+  it("keeps a short result at full size", () => {
+    expect(fitFontSize("Lions won by 12 runs", 46, 28, 834)).toBe(46);
+  });
+
+  it("shrinks a chase win with balls left so the margin stays readable", () => {
+    expect(fitFontSize("Tigers won by 10 wickets (5 balls left)", 46, 28, 834)).toBeLessThanOrEqual(37);
+  });
+
+  it("never goes below the smallest size", () => {
+    expect(fitFontSize("x".repeat(90), 46, 28, 834)).toBe(28);
+  });
+});
+
+describe("long result posters", { timeout: 30_000 }, () => {
+  it("the result poster and preview render a chase win with balls left", async () => {
+    const m = new TestMatch({ overs: 1, teams: ["Model Town Gymkhana", "Kites XI"] });
+    for (const runs of [1, 0, 0, 0, 0, 0]) m.ball({ runs });
+    m.endInnings("overs");
+    m.startInnings2(["Zain", "Faisal"], "Usman");
+    m.ball({ runs: 4, boundary: true });
+    m.endInnings("target");
+    const state = m.state;
+    expect(bannerText(state, posterOutcome(state, null))).toBe("Kites XI won by 10 wickets (5 balls left)");
+    const poster = await png("result-long", createElement(ResultPoster, { state, brand: null }), RESULT_POSTER_SIZE);
+    const preview = await png("preview-long", createElement(PreviewImage, { state, brand: null }), PREVIEW_SIZE);
+    expect([...poster.slice(0, 4)]).toEqual(PNG);
+    expect([...preview.slice(0, 4)]).toEqual(PNG);
   });
 });

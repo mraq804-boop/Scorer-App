@@ -6,7 +6,7 @@ import { t } from "@/lib/i18n";
 import { formatNeed, formatResult } from "@/lib/i18n/cricket";
 import { chaseNeed, formatOvers } from "@/lib/scoring";
 import type { MatchState, TeamSide } from "@/lib/scoring";
-import { potmFromState } from "@/lib/team";
+import { posterOutcome, potmFromState } from "@/lib/team";
 import type { PosterOutcome } from "@/lib/team";
 import { imageText } from "@/lib/share/image-text";
 import { FONT_FAMILY, HALDI, INK, PAPER } from "./parts";
@@ -15,6 +15,8 @@ import type { MatchBrand } from "./match";
 export const NIGHT = "#0b1430";
 export const PALE_GOLD = "#FAC775";
 export const GOLD_INK = "#412402";
+
+const CHAR_WIDTH_EM = 0.58;
 
 export type PosterTeam = { name: string; colour: TeamColour; logoUrl: string | null };
 
@@ -25,7 +27,13 @@ export function posterTeam(state: MatchState, side: TeamSide, brand: MatchBrand)
 }
 
 export function brandPotm(state: MatchState, brand: MatchBrand): string | null {
-  return brand === null ? null : potmFromState(state, brand.side, brand.xi, brand.potmPlayerId);
+  if (brand === null || posterOutcome(state, brand.resultOverride).kind === "live") return null;
+  return potmFromState(state, brand.side, brand.xi, brand.potmPlayerId);
+}
+
+export function fitFontSize(text: string, max: number, min: number, width: number): number {
+  const fits = Math.floor(width / (Math.max(text.length, 1) * CHAR_WIDTH_EM));
+  return Math.max(min, Math.min(max, fits));
 }
 
 export function teamScore(state: MatchState, side: TeamSide): { score: string; overs: string | null; batted: boolean } {
