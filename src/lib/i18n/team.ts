@@ -1,4 +1,4 @@
-import type { LeaderboardKey, LeaderboardRow, TeamPageMatch, TeamRecord } from "@/lib/team";
+import type { LeaderboardKey, LeaderboardRow, PlayerMatchStats, TeamPageMatch, TeamRecord } from "@/lib/team";
 import { t } from "./index";
 import type { MessageKey } from "./index";
 
@@ -93,3 +93,14 @@ export const LEADERBOARD_TITLES: Record<LeaderboardKey, MessageKey> = {
   mvp: "teamPage.board.mvp",
   potm: "teamPage.board.potm",
 };
+
+export function formatPerformer(stats: PlayerMatchStats): string {
+  const { batting, bowling } = stats;
+  const batted =
+    batting === null
+      ? null
+      : t(batting.notOut ? "teamPage.player.battedNotOut" : "teamPage.player.batted", { runs: batting.runs, balls: batting.balls });
+  const bowled = bowling === null || bowling.legalBalls === 0 ? null : t("teamPage.best", { wickets: bowling.wickets, runs: bowling.runs });
+  if (batted !== null && bowled !== null) return t("poster.figures", { batting: batted, bowling: bowled });
+  return batted ?? bowled ?? "";
+}

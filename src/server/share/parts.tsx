@@ -10,12 +10,13 @@ export const SINDOOR = "#c2413b";
 export const WHITE = "#ffffff";
 export const FONT_FAMILY = `${SANS}, ${NASKH}`;
 
-type ClipProps = { size: number; weight?: 400 | 700; color?: string; children: string };
+type ClipProps = { size: number; weight?: 400 | 700; color?: string; align?: "left" | "center"; children: string };
 
-export function Clip({ size, weight = 400, color, children }: ClipProps) {
+export function Clip({ size, weight = 400, color, align = "left", children }: ClipProps) {
   const style: CSSProperties = {
     display: "block",
-    flex: 1,
+    flexGrow: align === "center" ? 0 : 1,
+    flexShrink: 1,
     minWidth: 0,
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -23,6 +24,7 @@ export function Clip({ size, weight = 400, color, children }: ClipProps) {
     fontSize: size,
     fontWeight: weight,
     color,
+    textAlign: align,
   };
   return <div style={style}>{children}</div>;
 }

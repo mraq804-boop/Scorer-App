@@ -1,11 +1,11 @@
 import { loadSharedMatch } from "@/server/share/match";
 import { notFound, renderPng } from "@/server/share/render";
-import { CARD_SIZE, ScorecardImage } from "@/server/share/scorecard-image";
+import { RESULT_POSTER_SIZE, ResultPoster } from "@/server/share/result-poster";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(_request: Request, { params }: RouteContext<"/m/[code]/card">) {
   const shared = await loadSharedMatch((await params).code);
   if (shared === null) return notFound();
-  return renderPng(<ScorecardImage state={shared.state} code={shared.code} />, CARD_SIZE, "private, no-store");
+  return renderPng(<ResultPoster state={shared.state} brand={shared.brand} />, RESULT_POSTER_SIZE, "private, no-store");
 }

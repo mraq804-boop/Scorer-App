@@ -1,72 +1,73 @@
-import { t } from "@/lib/i18n";
-import { formatNeed, formatResult } from "@/lib/i18n/cricket";
-import { chaseNeed, formatOvers } from "@/lib/scoring";
-import type { InningsState, MatchState } from "@/lib/scoring";
+import { Stumps } from "@/components/art/cricket-art";
+import type { MatchState, TeamSide } from "@/lib/scoring";
+import { posterOutcome } from "@/lib/team";
 import { imageText } from "@/lib/share/image-text";
-import { Brand, Clip, FONT_FAMILY, HALDI, INK, LiveBadge, PAPER, WHITE } from "./parts";
+import type { MatchBrand } from "./match";
+import { Brand, Clip, HALDI, LiveBadge, PAPER, WHITE } from "./parts";
+import { Disc, GOLD_INK, Stage, bannerText, posterTeam, teamScore } from "./poster-parts";
 
 export const PREVIEW_SIZE = { width: 1200, height: 630 };
 
-function InningsRow({ state, innings }: { state: MatchState; innings: InningsState }) {
-  const need = chaseNeed(state, innings);
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 32 }}>
-        <Clip size={42} weight={700}>
-          {imageText(state.teams[innings.battingTeam].name)}
-        </Clip>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div style={{ display: "flex", fontSize: 76, fontWeight: 700, color: WHITE }}>
-            {t("score.runsWickets", { runs: innings.runs, wickets: innings.wickets })}
-          </div>
-          <div style={{ display: "flex", width: 190, fontSize: 32, color: PAPER, opacity: 0.8 }}>
-            {t("scorecard.oversIn", { overs: formatOvers(innings.legalBalls, state.rules.ballsPerOver) })}
-          </div>
-        </div>
-      </div>
-      {need !== null && (
-        <div style={{ display: "flex", fontSize: 32, fontWeight: 700, color: HALDI }}>
-          {formatNeed(need.needed, need.ballsLeft)}
-        </div>
-      )}
-    </div>
-  );
-}
+const SIDES: readonly TeamSide[] = ["A", "B"];
 
-export function PreviewImage({ state }: { state: MatchState }) {
-  const complete = state.status === "complete";
+function TeamRow({ state, side, brand }: { state: MatchState; side: TeamSide; brand: MatchBrand }) {
+  const team = posterTeam(state, side, brand);
+  const { score, overs, batted } = teamScore(state, side);
   return (
     <div
       style={{
         display: "flex",
-        flexDirection: "column",
-        width: "100%",
-        height: "100%",
-        padding: 56,
-        background: INK,
-        color: PAPER,
-        fontFamily: FONT_FAMILY,
+        alignItems: "center",
+        gap: 24,
+        padding: "14px 24px",
+        borderRadius: 28,
+        background: team.colour.base,
+        color: team.colour.on,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <Brand size={56} color={PAPER} />
-        {!complete && <LiveBadge size={30} />}
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", flex: 1, justifyContent: "center", gap: 24 }}>
-        <div style={{ display: "flex" }}>
-          <Clip size={48} weight={700} color={WHITE}>
-            {imageText(state.title)}
+      <Disc size={84} colour={team.colour} name={team.name} photoUrl={team.logoUrl} ring={4} />
+      <Clip size={42} weight={700} color={team.colour.on}>
+        {imageText(team.name)}
+      </Clip>
+      <div style={{ display: "flex", fontSize: batted ? 64 : 34, fontWeight: 700 }}>{score}</div>
+      {overs !== null && <div style={{ display: "flex", width: 170, fontSize: 28 }}>{overs}</div>}
+    </div>
+  );
+}
+
+export function PreviewImage({ state, brand }: { state: MatchState; brand: MatchBrand }) {
+  const outcome = posterOutcome(state, brand?.resultOverride ?? null);
+  const { width, height } = PREVIEW_SIZE;
+  return (
+    <Stage width={width} height={height} confetti={outcome.kind === "won"}>
+      <div style={{ display: "flex", flexDirection: "column", flex: 1, gap: 22, padding: "36px 48px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 24 }}>
+          <Brand size={52} color={PAPER} />
+          {outcome.kind === "live" && <LiveBadge size={30} />}
+        </div>
+        {SIDES.map((side) => (
+          <TeamRow key={side} state={state} side={side} brand={brand} />
+        ))}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            marginTop: "auto",
+            padding: "14px 28px",
+            borderRadius: 24,
+            background: HALDI,
+            color: GOLD_INK,
+            marginRight: 140,
+          }}
+        >
+          <Clip size={40} weight={700} color={GOLD_INK}>
+            {bannerText(state, outcome)}
           </Clip>
         </div>
-        {state.innings.map((innings) => (
-          <InningsRow key={innings.number} state={state} innings={innings} />
-        ))}
-        {complete && state.result !== null && (
-          <div style={{ display: "flex", fontSize: 40, fontWeight: 700, color: HALDI }}>
-            {imageText(formatResult(state.result, state.teams))}
-          </div>
-        )}
       </div>
-    </div>
+      <div style={{ display: "flex", position: "absolute", right: 48, bottom: 32 }}>
+        <Stumps width={90} height={130} colour={WHITE} />
+      </div>
+    </Stage>
   );
 }

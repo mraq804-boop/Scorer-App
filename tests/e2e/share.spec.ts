@@ -114,7 +114,7 @@ test.describe("sharing when the browser or the connection is not helping", () =>
 
     const sheet = await openShare(page);
     await expect.poll(() => cardRequests.length).toBe(1);
-    await sheet.getByRole("button", { name: "Share scorecard image" }).click();
+    await sheet.getByRole("button", { name: "Share result poster" }).click();
 
     await expect.poll(async () => (await shared(page)).length).toBe(1);
     expect(cardRequests).toHaveLength(1);
@@ -175,7 +175,7 @@ test.describe("sharing when the browser or the connection is not helping", () =>
     const code = await syncedMatch(page);
     const sheet = await openShare(page);
 
-    await sheet.getByRole("button", { name: "Share scorecard image" }).click();
+    await sheet.getByRole("button", { name: "Share result poster" }).click();
     await expect(page.getByText(SHEET_MISSED)).toBeVisible();
 
     const download = page.waitForEvent("download");
@@ -191,9 +191,9 @@ test.describe("sharing when the browser or the connection is not helping", () =>
     const sheet = await openShare(page);
 
     await sheet.getByRole("link", { name: "Share on WhatsApp" }).click();
-    await sheet.getByRole("button", { name: "Share scorecard image" }).click();
+    await sheet.getByRole("button", { name: "Share result poster" }).click();
 
-    await expect(sheet.getByRole("button", { name: "Share scorecard image" })).toBeEnabled();
+    await expect(sheet.getByRole("button", { name: "Share result poster" })).toBeEnabled();
     await expect(page.getByText(WHATSAPP_MISSED)).toHaveCount(0);
     await expect(page.getByText(SHEET_MISSED)).toHaveCount(0);
   });
@@ -205,7 +205,7 @@ test.describe("sharing when the browser or the connection is not helping", () =>
     await syncedMatch(page);
     const sheet = await openShare(page);
 
-    await sheet.getByRole("button", { name: "Share scorecard image" }).click();
+    await sheet.getByRole("button", { name: "Share result poster" }).click();
 
     await expect(page.getByText("Couldn't make the scorecard image.")).toBeVisible();
     expect(await shared(page)).toHaveLength(0);
@@ -277,7 +277,7 @@ test.describe("with a backend", () => {
     await viewer.goto(`/m/${code}`);
     expect(cardRequests).toHaveLength(0);
 
-    const button = viewer.getByRole("button", { name: "Share scorecard image" });
+    const button = viewer.getByRole("button", { name: "Share result poster" });
     await button.dispatchEvent("pointerdown");
     await expect.poll(() => cardRequests.length).toBe(1);
     await button.click();
@@ -306,7 +306,7 @@ test.describe("with a backend", () => {
     const sheet = await openShare(page);
 
     await sheet.getByRole("link", { name: "Share on WhatsApp" }).click();
-    await sheet.getByRole("button", { name: "Share scorecard image" }).click();
+    await sheet.getByRole("button", { name: "Share result poster" }).click();
 
     await expect
       .poll(() => page.evaluate(() => (window as unknown as { __shared: unknown[] }).__shared.length))
@@ -324,7 +324,7 @@ test.describe("with a backend", () => {
     const sheet = await openShare(page);
 
     const download = page.waitForEvent("download");
-    await sheet.getByRole("button", { name: "Share scorecard image" }).click();
+    await sheet.getByRole("button", { name: "Share result poster" }).click();
     expect((await download).suggestedFilename()).toBe(`scorecard-${code}.png`);
   });
 });

@@ -13,5 +13,5 @@ export default async function Image({ params }: { params: Promise<{ code: string
   const shared = await loadSharedMatch((await params).code);
   if (shared === null) return notFound();
   const seconds = serverEnv().LIVE_CACHE_SECONDS;
-  return renderPng(<PreviewImage state={shared.state} />, size, `public, s-maxage=${seconds}, stale-while-revalidate=10`);
+  return renderPng(<PreviewImage state={shared.state} brand={shared.brand} />, size, `public, s-maxage=${seconds}, stale-while-revalidate=10`);
 }
