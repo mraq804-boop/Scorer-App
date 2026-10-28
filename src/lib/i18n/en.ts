@@ -276,7 +276,7 @@ export const en = {
   "share.sheetTitle": "Share this match",
   "share.whatsapp": "Share on WhatsApp",
   "share.image": "Share result poster",
-  "share.imageFailed": "Couldn't make the scorecard image. Check your connection and try again.",
+  "share.imageFailed": "Couldn't make the result poster. Check your connection and try again.",
   "share.imageAlt": "Cricket match score",
   "share.whatsappBlocked": "WhatsApp didn't open. Tap to try again.",
   "share.openWhatsapp": "Open WhatsApp",

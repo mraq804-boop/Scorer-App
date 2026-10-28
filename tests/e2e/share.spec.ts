@@ -207,7 +207,7 @@ test.describe("sharing when the browser or the connection is not helping", () =>
 
     await sheet.getByRole("button", { name: "Share result poster" }).click();
 
-    await expect(page.getByText("Couldn't make the scorecard image.")).toBeVisible();
+    await expect(page.getByText("Couldn't make the result poster.")).toBeVisible();
     expect(await shared(page)).toHaveLength(0);
   });
 });
