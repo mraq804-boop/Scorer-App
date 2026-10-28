@@ -13,6 +13,10 @@ import {
   refreshTeamCache,
   refreshTeamCacheInBackground,
   removeScorer,
+  replaceTeamPicture,
+  setPlayerPhoto,
+  setTeamColour,
+  setTeamLogo,
   setPotm,
   setResultOverride,
   supabaseSquadPush,
@@ -729,5 +733,87 @@ describe("supabaseSquadPush", () => {
     expect(await supabaseSquadPush(client)(db)).toBe(false);
 
     expect(await db.squadOutbox.count()).toBe(2);
+  });
+});
+
+describe("team brand calls", () => {
+  it("send the owner's colour, logo and photo choices", async () => {
+    const { client, rpc } = clientWith(() => ok(null));
+
+    expect(await setTeamColour(client, "ocean")).toEqual({ ok: true, value: undefined });
+    expect(rpc).toHaveBeenCalledWith("set_team_colour", { p_colour: "ocean" });
+    await setTeamLogo(client, 3);
+    expect(rpc).toHaveBeenCalledWith("set_team_logo", { p_version: 3 });
+    await setTeamLogo(client, null);
+    expect(rpc).toHaveBeenCalledWith("set_team_logo", { p_version: null });
+    await setPlayerPhoto(client, "p-1", 2);
+    expect(rpc).toHaveBeenCalledWith("set_player_photo", { p_player: "p-1", p_version: 2 });
+  });
+
+  it("keep the team colour and logo version from get_my_team", async () => {
+    const json = myTeamJson();
+    const { client } = clientWith(() => ok({ ...json, team: { ...json.team, colour: "ocean", logoVersion: 2 } }));
+
+    expect(await fetchMyTeam(client)).toMatchObject({ colour: "ocean", logoVersion: 2 });
+  });
+});
+
+describe("replaceTeamPicture", () => {
+  const blob = new Blob(["jpeg"], { type: "image/jpeg" });
+
+  function storageClient(uploadError: unknown = null) {
+    const calls: string[] = [];
+    const bucket = {
+      upload: vi.fn(async (path: string) => {
+        calls.push(`upload ${path}`);
+        return { data: uploadError === null ? { path } : null, error: uploadError };
+      }),
+      remove: vi.fn(async (paths: string[]) => {
+        calls.push(`remove ${paths.join(",")}`);
+        return { data: [], error: null };
+      }),
+    };
+    const from = vi.fn(() => bucket);
+    return { client: { storage: { from } } as unknown as SupabaseClient, calls, bucket, from };
+  }
+
+  it("uploads the new picture, saves it, then removes the old one", async () => {
+    const { client, calls, bucket, from } = storageClient();
+    const save = vi.fn(async () => ({ ok: true as const, value: undefined }));
+
+    expect(await replaceTeamPicture(client, { newPath: "teams/x/logo-2.jpg", oldPath: "teams/x/logo-1.jpg", blob, save })).toEqual({
+      ok: true,
+      value: undefined,
+    });
+    expect(from).toHaveBeenCalledWith("team-media");
+    expect(bucket.upload).toHaveBeenCalledWith("teams/x/logo-2.jpg", blob, {
+      contentType: "image/jpeg",
+      cacheControl: "31536000",
+      upsert: false,
+    });
+    expect(calls).toEqual(["upload teams/x/logo-2.jpg", "remove teams/x/logo-1.jpg"]);
+  });
+
+  it("saves nothing when the upload fails", async () => {
+    const { client, calls } = storageClient({ message: "Failed to fetch" });
+    const save = vi.fn(async () => ({ ok: true as const, value: undefined }));
+
+    expect(await replaceTeamPicture(client, { newPath: "teams/x/logo-2.jpg", oldPath: null, blob, save })).toEqual({
+      ok: false,
+      error: "network",
+    });
+    expect(save).not.toHaveBeenCalled();
+    expect(calls).toEqual(["upload teams/x/logo-2.jpg"]);
+  });
+
+  it("removes the new picture and keeps the old one when saving fails", async () => {
+    const { client, calls } = storageClient();
+    const save = vi.fn(async () => ({ ok: false as const, error: "network" as const }));
+
+    expect(await replaceTeamPicture(client, { newPath: "teams/x/logo-2.jpg", oldPath: "teams/x/logo-1.jpg", blob, save })).toEqual({
+      ok: false,
+      error: "network",
+    });
+    expect(calls).toEqual(["upload teams/x/logo-2.jpg", "remove teams/x/logo-2.jpg"]);
   });
 });

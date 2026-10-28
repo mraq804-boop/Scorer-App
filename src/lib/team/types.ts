@@ -1,7 +1,7 @@
 import type { TeamSide } from "@/lib/scoring";
 
 export type SquadRole = "batter" | "bowler" | "allrounder" | "keeper";
-export type SquadPlayer = { id: string; name: string; role: SquadRole | null; active: boolean };
+export type SquadPlayer = { id: string; name: string; role: SquadRole | null; active: boolean; photoVersion?: number };
 export type Season = { id: string; name: string; startsOn: string; endsOn: string };
 export type Outcome = "won" | "lost" | "tied";
 export type PlayerMatchStats = {
@@ -93,7 +93,7 @@ export type Fixture = {
 };
 export type TeamPageMatch = TeamMatch & { title: string; lines: string[]; result: string | null };
 export type TeamPageData = {
-  team: { code: string; name: string; homeGround: string | null; timeZone: string };
+  team: { code: string; name: string; homeGround: string | null; timeZone: string; colour?: string; logoVersion?: number };
   squad: SquadPlayer[];
   seasons: Season[];
   fixtures: Fixture[];

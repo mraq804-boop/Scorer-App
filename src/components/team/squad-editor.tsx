@@ -3,17 +3,21 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { LoaderCircle, Pencil } from "lucide-react";
 import { useId, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
+import { Avatar } from "@/components/team-page/avatar";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { colourFor, photoPath, photoUrl } from "@/lib/brand";
 import { t } from "@/lib/i18n";
 import type { CachedTeam } from "@/lib/local/db";
 import type { SquadPlayer, SquadRole } from "@/lib/team";
+import { PHOTO_SIZE } from "@/lib/media/prepare-image";
 import { SQUAD_MAX_PLAYERS } from "@/lib/team/local";
-import { upsertSquadPlayers } from "@/lib/team/remote";
+import { deleteTeamPicture, replaceTeamPicture, setPlayerPhoto, upsertSquadPlayers } from "@/lib/team/remote";
 import { validatePlayer } from "@/lib/validation/team";
 import { FormAlert, ROLES, ROLE_LABELS, SelectField, TextField, teamErrorMessage } from "./form";
+import { PictureInput } from "./picture-input";
 
 type SquadEditorProps = {
   client: SupabaseClient;
@@ -27,6 +31,7 @@ type PlayerFormProps = {
   existing: boolean;
   onSubmit: (player: SquadPlayer) => Promise<string | undefined>;
   onCancel?: () => void;
+  onRemovePhoto?: () => Promise<void>;
 };
 
 const blankPlayer = (): SquadPlayer => ({
@@ -36,7 +41,7 @@ const blankPlayer = (): SquadPlayer => ({
   active: true,
 });
 
-function PlayerForm({ initial, submitLabel, existing, onSubmit, onCancel }: PlayerFormProps) {
+function PlayerForm({ initial, submitLabel, existing, onSubmit, onCancel, onRemovePhoto }: PlayerFormProps) {
   const activeId = useId();
   const [player, setPlayer] = useState(initial);
   const [errors, setErrors] = useState<{ name?: string; form?: string }>({});
@@ -95,6 +100,17 @@ function PlayerForm({ initial, submitLabel, existing, onSubmit, onCancel }: Play
           <Switch id={activeId} checked={player.active} onCheckedChange={(active) => update({ active })} />
         </div>
       )}
+      {onRemovePhoto !== undefined && (
+        <Button
+          type="button"
+          variant="ghost"
+          disabled={busy}
+          onClick={() => void onRemovePhoto()}
+          className="h-10 self-start rounded-xl"
+        >
+          {t("brand.removePhoto")}
+        </Button>
+      )}
       {errors.form !== undefined && <FormAlert message={errors.form} />}
       <div className="flex gap-2">
         {onCancel !== undefined && (
@@ -111,9 +127,10 @@ function PlayerForm({ initial, submitLabel, existing, onSubmit, onCancel }: Play
   );
 }
 
-function PlayerRow({ player, onEdit }: { player: SquadPlayer; onEdit?: () => void }) {
+function PlayerRow({ player, leading, onEdit }: { player: SquadPlayer; leading: ReactNode; onEdit?: () => void }) {
   return (
     <div className="flex min-h-14 items-center gap-3 rounded-xl border bg-card px-3.5 py-2">
+      {leading}
       <span className="flex min-w-0 flex-1 flex-col">
         <bdi className="truncate font-medium">{player.name}</bdi>
         <span className="flex gap-2 text-sm text-muted-foreground">
@@ -139,7 +156,54 @@ function PlayerRow({ player, onEdit }: { player: SquadPlayer; onEdit?: () => voi
 export function SquadEditor({ client, team, onChanged }: SquadEditorProps) {
   const headingId = useId();
   const [editing, setEditing] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState<string | undefined>(undefined);
   const canEdit = team.role === "owner";
+  const colour = colourFor(team.colour, team.name);
+
+  async function savePhoto(player: SquadPlayer, blob: Blob): Promise<void> {
+    setPhotoError(undefined);
+    const current = player.photoVersion ?? null;
+    const version = (current ?? 0) + 1;
+    const result = await replaceTeamPicture(client, {
+      newPath: photoPath(team.code, player.id, version),
+      oldPath: current === null ? null : photoPath(team.code, player.id, current),
+      blob,
+      save: () => setPlayerPhoto(client, player.id, version),
+    });
+    if (result.ok) await onChanged();
+    else setPhotoError(teamErrorMessage(result.error));
+  }
+
+  async function removePhoto(player: SquadPlayer): Promise<void> {
+    setPhotoError(undefined);
+    const result = await setPlayerPhoto(client, player.id, null);
+    if (!result.ok) {
+      setPhotoError(teamErrorMessage(result.error));
+      return;
+    }
+    if (player.photoVersion !== undefined) await deleteTeamPicture(client, photoPath(team.code, player.id, player.photoVersion));
+    setEditing(null);
+    await onChanged();
+  }
+
+  const leadingFor = (player: SquadPlayer) => {
+    const avatar = (
+      <Avatar name={player.name} url={photoUrl(team.code, player.id, player.photoVersion)} size={44} colour={colour} />
+    );
+    if (!canEdit) return avatar;
+    const label = t(player.photoVersion === undefined ? "brand.addPhoto" : "brand.changePhoto", { name: player.name });
+    return (
+      <PictureInput
+        label={label}
+        size={PHOTO_SIZE}
+        onPicked={(blob) => savePhoto(player, blob)}
+        onError={setPhotoError}
+        className="rounded-full"
+      >
+        {avatar}
+      </PictureInput>
+    );
+  };
 
   async function save(player: SquadPlayer): Promise<string | undefined> {
     const result = await upsertSquadPlayers(client, team.id, [player]);
@@ -157,6 +221,7 @@ export function SquadEditor({ client, team, onChanged }: SquadEditorProps) {
         </h2>
         <span className="num text-sm text-muted-foreground">{t("team.squad.count", { n: team.squad.length })}</span>
       </div>
+      {photoError !== undefined && <FormAlert message={photoError} />}
       {team.squad.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("team.squad.empty")}</p>
       ) : (
@@ -170,9 +235,14 @@ export function SquadEditor({ client, team, onChanged }: SquadEditorProps) {
                   existing
                   onSubmit={save}
                   onCancel={() => setEditing(null)}
+                  onRemovePhoto={player.photoVersion === undefined ? undefined : () => removePhoto(player)}
                 />
               ) : (
-                <PlayerRow player={player} onEdit={canEdit ? () => setEditing(player.id) : undefined} />
+                <PlayerRow
+                  player={player}
+                  leading={leadingFor(player)}
+                  onEdit={canEdit ? () => setEditing(player.id) : undefined}
+                />
               )}
             </li>
           ))}

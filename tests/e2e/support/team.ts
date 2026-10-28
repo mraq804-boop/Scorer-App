@@ -119,10 +119,10 @@ export async function fakeAccount(page: Page, kind: "google" | "guest", server: 
     if (!request.url().endsWith("/rpc/get_my_team")) return fulfillJson(route, 0);
     calls.myTeam += 1;
     if (server === null) return fulfillJson(route, null);
-    const { id, code, name, homeGround, timeZone } = server;
+    const { id, code, name, homeGround, timeZone, colour, logoVersion } = server;
     return fulfillJson(route, {
       role: server.role,
-      team: { id, code, name, homeGround, timeZone },
+      team: { id, code, name, homeGround, timeZone, colour: colour ?? null, logoVersion: logoVersion ?? null },
       squad: server.squad,
       seasons: server.seasons,
       fixtures: server.fixtures,

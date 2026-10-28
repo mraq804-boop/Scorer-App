@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ChevronLeft, LoaderCircle, Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { BrandEditor } from "@/components/team/brand-editor";
 import { CreateTeam, EditTeam } from "@/components/team/create-team";
 import { FixturesEditor } from "@/components/team/fixtures-editor";
 import { FormAlert } from "@/components/team/form";
@@ -150,6 +151,7 @@ function TeamContent() {
       return (
         <>
           {owner ? <OwnerHeader client={client} team={team} onChanged={onChanged} /> : <TeamHeader team={team} />}
+          {owner && <BrandEditor client={client} team={team} onChanged={onChanged} />}
           {owner && <PublicLink team={team} />}
           <FixturesEditor client={client} team={team} onChanged={onChanged} />
           {owner && <MatchOutcomes client={client} team={team} />}

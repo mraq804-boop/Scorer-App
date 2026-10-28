@@ -21,7 +21,7 @@ function readPlayer(row: Row): SquadPlayer | undefined {
   if (!isText(row.id) || !isText(row.name) || typeof row.active !== "boolean") return undefined;
   const role =
     row.role === "batter" || row.role === "bowler" || row.role === "allrounder" || row.role === "keeper" ? row.role : null;
-  return { id: row.id, name: row.name, role, active: row.active };
+  return { id: row.id, name: row.name, role, active: row.active, ...(isCount(row.photoVersion) ? { photoVersion: row.photoVersion } : {}) };
 }
 
 function readSeason(row: Row): Season | undefined {
@@ -95,11 +95,18 @@ const playedAt = (match: TeamPageMatch) => match.record?.playedAt ?? "";
 
 export function parseTeamPage(data: unknown): TeamPageData | null {
   if (!isRow(data) || !isRow(data.team)) return null;
-  const { code, name, homeGround, timeZone } = data.team;
+  const { code, name, homeGround, timeZone, colour, logoVersion } = data.team;
   if (!isText(code) || !isText(name) || !isText(timeZone)) return null;
   const matches = rows(data.matches, readMatch);
   return {
-    team: { code, name, homeGround: textOrNull(homeGround), timeZone },
+    team: {
+      code,
+      name,
+      homeGround: textOrNull(homeGround),
+      timeZone,
+      ...(isText(colour) ? { colour } : {}),
+      ...(isCount(logoVersion) ? { logoVersion } : {}),
+    },
     squad: rows(data.squad, readPlayer),
     seasons: rows(data.seasons, readSeason),
     fixtures: rows(data.fixtures, readFixture),

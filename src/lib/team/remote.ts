@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { MEDIA_BUCKET } from "@/lib/brand";
 import type { CachedFixture, CachedTeam, LocalDb } from "@/lib/local/db";
 import { isConstraintViolation, isTransient } from "@/lib/sync/push";
 import type { RpcError, SquadPushFn } from "@/lib/sync/push";
@@ -104,6 +105,8 @@ function parseMyTeam(data: unknown, fetchedAt: string): CachedTeam | undefined {
     name: team.name,
     homeGround: typeof team.homeGround === "string" ? team.homeGround : null,
     timeZone: team.timeZone,
+    ...(typeof team.colour === "string" ? { colour: team.colour } : {}),
+    ...(typeof team.logoVersion === "number" ? { logoVersion: team.logoVersion } : {}),
     squad: squad as SquadPlayer[],
     seasons: seasons as Season[],
     fixtures: fixtures as CachedFixture[],
@@ -221,6 +224,51 @@ export function updateTeam(client: SupabaseClient, input: NewTeam): Promise<Team
     { p_name: input.name, p_home_ground: input.homeGround, p_time_zone: input.timeZone },
     readNothing,
   );
+}
+
+export function setTeamColour(client: SupabaseClient, colour: string): Promise<TeamResult<void>> {
+  return call(client, "set_team_colour", { p_colour: colour }, readNothing);
+}
+
+export function setTeamLogo(client: SupabaseClient, version: number | null): Promise<TeamResult<void>> {
+  return call(client, "set_team_logo", { p_version: version }, readNothing);
+}
+
+export function setPlayerPhoto(client: SupabaseClient, playerId: string, version: number | null): Promise<TeamResult<void>> {
+  return call(client, "set_player_photo", { p_player: playerId, p_version: version }, readNothing);
+}
+
+export type PictureChange = {
+  newPath: string;
+  oldPath: string | null;
+  blob: Blob;
+  save: () => Promise<TeamResult<void>>;
+};
+
+export async function deleteTeamPicture(client: SupabaseClient, path: string): Promise<void> {
+  try {
+    await client.storage.from(MEDIA_BUCKET).remove([path]);
+  } catch {
+    return;
+  }
+}
+
+export async function replaceTeamPicture(client: SupabaseClient, change: PictureChange): Promise<TeamResult<void>> {
+  try {
+    const { error } = await client.storage
+      .from(MEDIA_BUCKET)
+      .upload(change.newPath, change.blob, { contentType: "image/jpeg", cacheControl: "31536000", upsert: false });
+    if (error !== null) return { ok: false, error: "network" };
+  } catch {
+    return { ok: false, error: "network" };
+  }
+  const saved = await change.save();
+  if (!saved.ok) {
+    await deleteTeamPicture(client, change.newPath);
+    return saved;
+  }
+  if (change.oldPath !== null) await deleteTeamPicture(client, change.oldPath);
+  return saved;
 }
 
 export function removeScorer(client: SupabaseClient, userId: string): Promise<TeamResult<void>> {

@@ -38,6 +38,8 @@ export type CachedTeam = {
   name: string;
   homeGround: string | null;
   timeZone: string;
+  colour?: string;
+  logoVersion?: number;
   squad: SquadPlayer[];
   seasons: Season[];
   fixtures: CachedFixture[];

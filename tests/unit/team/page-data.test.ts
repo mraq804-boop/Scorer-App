@@ -139,3 +139,16 @@ describe("parseTeamPage", () => {
     expect(page?.matches).toHaveLength(2);
   });
 });
+
+describe("parseTeamPage brand fields", () => {
+  it("reads the team colour, logo version and player photo versions", () => {
+    const page = parseTeamPage({
+      ...payload,
+      team: { ...payload.team, colour: "ocean", logoVersion: 3 },
+      squad: [{ ...payload.squad[0], photoVersion: 2 }, { id: "sq-bilal", name: "Bilal", role: null, active: true, photoVersion: "x" }],
+    });
+    expect(page?.team).toMatchObject({ colour: "ocean", logoVersion: 3 });
+    expect(page?.squad[0]).toMatchObject({ photoVersion: 2 });
+    expect(page?.squad[1]).not.toHaveProperty("photoVersion");
+  });
+});
