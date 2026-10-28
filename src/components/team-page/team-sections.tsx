@@ -1,26 +1,14 @@
+import { Crown } from "lucide-react";
+import { colourFor } from "@/lib/brand";
+import type { TeamColour } from "@/lib/brand";
 import { t } from "@/lib/i18n";
-import { LEADERBOARD_GROUPS, LEADERBOARD_TITLES, formatFixtureTime, formatLeaderboardValue, formatRecord } from "@/lib/i18n/team";
-import type { Fixture, LeaderboardKey, LeaderboardRow, TeamPageData, TeamPageMatch, TeamRecord, TeamStats } from "@/lib/team";
+import { LEADERBOARD_GROUPS, LEADERBOARD_TITLES, formatFixtureTime, formatLeaderboardValue } from "@/lib/i18n/team";
+import type { Fixture, LeaderboardKey, LeaderboardRow, TeamPageMatch, TeamStats } from "@/lib/team";
+import { Avatar } from "./avatar";
 import { MatchLink } from "./match-list";
 
 const RECENT_RESULTS = 10;
 const NEXT_FIXTURES = 3;
-
-export function TeamHeader({ page, record }: { page: TeamPageData; record: TeamRecord }) {
-  return (
-    <header className="flex flex-col gap-1">
-      <h1 className="truncate text-3xl font-bold">
-        <bdi>{page.team.name}</bdi>
-      </h1>
-      {page.team.homeGround !== null && (
-        <p className="truncate text-muted-foreground">
-          <bdi>{page.team.homeGround}</bdi>
-        </p>
-      )}
-      <p className="num text-sm font-semibold">{formatRecord(record)}</p>
-    </header>
-  );
-}
 
 function fixtureDetails(fixture: Fixture): string[] {
   return [
@@ -88,21 +76,37 @@ export function RecentResults({ matches, timeZone }: { matches: TeamPageMatch[];
   );
 }
 
+type Look = { colour: TeamColour; photoOf: (playerId: string) => string | null };
+
 type BoardProps = {
   board: LeaderboardKey;
   rows: LeaderboardRow[];
   names: ReadonlyMap<string, string>;
   playerHref: (playerId: string) => string;
+  look: Look;
 };
 
-function Board({ board, rows, names, playerHref }: BoardProps) {
+function Board({ board, rows, names, playerHref, look }: BoardProps) {
+  const [leader, ...rest] = rows;
   return (
-    <div className="flex flex-col gap-1 rounded-2xl border bg-card p-4">
+    <div className="flex flex-col gap-2 rounded-2xl border bg-card p-4">
       <h3 className="text-sm font-semibold text-muted-foreground">{t(LEADERBOARD_TITLES[board])}</h3>
       <ol className="flex flex-col">
-        {rows.map((row, index) => (
-          <li key={row.playerId} className="flex min-h-10 items-center gap-3">
-            <span className="num w-5 shrink-0 text-sm text-muted-foreground">{index + 1}</span>
+        {leader !== undefined && (
+          <li data-leader className="mb-1 flex items-center gap-3 rounded-xl bg-haldi/15 p-2.5">
+            <Crown className="size-5 shrink-0 text-haldi" aria-hidden />
+            <span className="sr-only">{t("teamPage.leader")}</span>
+            <Avatar name={names.get(leader.playerId) ?? ""} url={look.photoOf(leader.playerId)} size={48} colour={look.colour} />
+            <a href={playerHref(leader.playerId)} className="min-w-0 flex-1 truncate text-lg font-bold hover:underline">
+              <bdi>{names.get(leader.playerId)}</bdi>
+            </a>
+            <span className="num shrink-0 text-2xl font-extrabold">{formatLeaderboardValue(board, leader)}</span>
+          </li>
+        )}
+        {rest.map((row, index) => (
+          <li key={row.playerId} className="flex min-h-11 items-center gap-3 px-2.5">
+            <span className="num w-5 shrink-0 text-sm text-muted-foreground">{index + 2}</span>
+            <Avatar name={names.get(row.playerId) ?? ""} url={look.photoOf(row.playerId)} size={28} colour={look.colour} />
             <a href={playerHref(row.playerId)} className="min-w-0 flex-1 truncate font-medium hover:underline">
               <bdi>{names.get(row.playerId)}</bdi>
             </a>
@@ -114,9 +118,16 @@ function Board({ board, rows, names, playerHref }: BoardProps) {
   );
 }
 
-type LeaderboardsProps = { stats: TeamStats; names: ReadonlyMap<string, string>; playerHref: (playerId: string) => string };
+type LeaderboardsProps = {
+  stats: TeamStats;
+  names: ReadonlyMap<string, string>;
+  playerHref: (playerId: string) => string;
+  colour?: TeamColour;
+  photoOf?: (playerId: string) => string | null;
+};
 
-export function Leaderboards({ stats, names, playerHref }: LeaderboardsProps) {
+export function Leaderboards({ stats, names, playerHref, colour, photoOf }: LeaderboardsProps) {
+  const look: Look = { colour: colour ?? colourFor(null, ""), photoOf: photoOf ?? (() => null) };
   return (
     <>
       {LEADERBOARD_GROUPS.map((group) => {
@@ -131,7 +142,14 @@ export function Leaderboards({ stats, names, playerHref }: LeaderboardsProps) {
               <p className="text-sm text-muted-foreground">{t("teamPage.group.empty")}</p>
             ) : (
               boards.map((board) => (
-                <Board key={board} board={board} rows={stats.leaderboards[board]} names={names} playerHref={playerHref} />
+                <Board
+                  key={board}
+                  board={board}
+                  rows={stats.leaderboards[board]}
+                  names={names}
+                  playerHref={playerHref}
+                  look={look}
+                />
               ))
             )}
           </section>

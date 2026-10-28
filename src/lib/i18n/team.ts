@@ -1,4 +1,4 @@
-import type { LeaderboardKey, LeaderboardRow, PlayerMatchStats, TeamPageMatch, TeamRecord } from "@/lib/team";
+import type { LeaderboardKey, LeaderboardRow, PlayerMatchStats, PlayerTotals, TeamPageMatch, TeamRecord } from "@/lib/team";
 import { t } from "./index";
 import type { MessageKey } from "./index";
 
@@ -103,4 +103,19 @@ export function formatPerformer(stats: PlayerMatchStats): string {
   const bowled = bowling === null || bowling.legalBalls === 0 ? null : t("teamPage.best", { wickets: bowling.wickets, runs: bowling.runs });
   if (batted !== null && bowled !== null) return t("poster.figures", { batting: batted, bowling: bowled });
   return batted ?? bowled ?? "";
+}
+
+type BadgeKey = "hundreds" | "fifties" | "fiveFors" | "hatTricks" | "potm";
+
+export function playerBadges(totals: PlayerTotals): { key: BadgeKey; text: string }[] {
+  const counts: [BadgeKey, number][] = [
+    ["hundreds", totals.hundreds],
+    ["fifties", totals.fifties],
+    ["fiveFors", totals.fiveFors],
+    ["hatTricks", totals.hatTricks],
+    ["potm", totals.potmAwards],
+  ];
+  return counts
+    .filter(([, n]) => n > 0)
+    .map(([key, n]) => ({ key, text: t(`badge.${key}.${n === 1 ? "one" : "other"}`, { n }) }));
 }

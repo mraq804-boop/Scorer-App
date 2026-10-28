@@ -4,8 +4,11 @@ import { cache } from "react";
 import { Copyright } from "@/components/copyright";
 import { SeasonLinks } from "@/components/team-page/season-links";
 import { ShareTeam } from "@/components/team-page/share-team";
-import { Leaderboards, NextFixtures, RecentResults, TeamHeader } from "@/components/team-page/team-sections";
+import { TeamHero } from "@/components/team-page/team-hero";
+import { Leaderboards, NextFixtures, RecentResults } from "@/components/team-page/team-sections";
+import { colourFor, photoUrl } from "@/lib/brand";
 import { t } from "@/lib/i18n";
+import { teamForm } from "@/lib/team";
 import { teamUrl } from "@/lib/site-url";
 import { getTeamPage, matchesInSeason, seasonQuery, selectedSeason, teamStats } from "@/server/team";
 
@@ -30,18 +33,22 @@ export default async function TeamPublicPage({ params, searchParams }: PageProps
   const seasonId = selectedSeason(page, (await searchParams).season, now);
   const stats = teamStats(page, seasonId);
   const names = new Map(page.squad.map((player) => [player.id, player.name]));
+  const photos = new Map(page.squad.map((player) => [player.id, player.photoVersion]));
+  const matches = matchesInSeason(page, seasonId);
   const url = teamUrl(page.team.code);
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-6 px-4 pt-6 pb-10">
-      <TeamHeader page={page} record={stats.record} />
+      <TeamHero page={page} record={stats.record} form={teamForm(matches)} />
       <SeasonLinks basePath={`/t/${page.team.code}`} seasons={page.seasons} selected={seasonId} />
       <NextFixtures fixtures={page.fixtures} timeZone={page.team.timeZone} now={now} />
-      <RecentResults matches={matchesInSeason(page, seasonId)} timeZone={page.team.timeZone} />
+      <RecentResults matches={matches} timeZone={page.team.timeZone} />
       <Leaderboards
         stats={stats}
         names={names}
         playerHref={(playerId) => `/t/${page.team.code}/p/${playerId}${seasonQuery(seasonId)}`}
+        colour={colourFor(page.team.colour, page.team.name)}
+        photoOf={(playerId) => photoUrl(page.team.code, playerId, photos.get(playerId))}
       />
       <ShareTeam text={t("team.link.shareText", { name: page.team.name, url })} />
       <Copyright />

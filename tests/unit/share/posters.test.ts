@@ -31,7 +31,11 @@ function finishedMatch(teams?: [string, string], openers?: [string, string]): Te
 
 describe("match posters", { timeout: 30_000 }, () => {
   it("posters render without any brand", async () => {
-    const bytes = await png("result-plain", createElement(ResultPoster, { state: finishedMatch().state, brand: null }), RESULT_POSTER_SIZE);
+    const bytes = await png(
+      "result-plain",
+      createElement(ResultPoster, { state: finishedMatch().state, brand: null }),
+      RESULT_POSTER_SIZE,
+    );
     expect([...bytes.slice(0, 4)]).toEqual(PNG);
     expect(RESULT_POSTER_SIZE).toEqual({ width: 1080, height: 1350 });
   });
@@ -47,6 +51,31 @@ describe("match posters", { timeout: 30_000 }, () => {
     const m = new TestMatch();
     m.ball({ runs: 4, boundary: true });
     const bytes = await png("preview-live", createElement(PreviewImage, { state: m.state, brand: null }), PREVIEW_SIZE);
+    expect([...bytes.slice(0, 4)]).toEqual(PNG);
+  });
+});
+
+describe("team preview", { timeout: 30_000 }, () => {
+  it("the team preview renders with a logo and photos", async () => {
+    const { aggregateTeamStats, parseTeamPage } = await import("@/lib/team");
+    const { TeamPreviewImage } = await import("@/server/share/team-image");
+    const page = parseTeamPage({
+      team: {
+        code: "abcd2345",
+        name: "Lions",
+        homeGround: "Model Town",
+        timeZone: "Asia/Karachi",
+        colour: "ocean",
+        logoVersion: 1,
+      },
+      squad: [{ id: "sq-ali", name: "Ali", role: "batter", active: true, photoVersion: 1 }],
+      seasons: [],
+      fixtures: [],
+      matches: [],
+    });
+    if (page === null) throw new Error("no page");
+    const stats = aggregateTeamStats(page.matches, page.squad, { seasonId: null, seasons: [], timeZone: "Asia/Karachi" });
+    const bytes = await png("team-preview", createElement(TeamPreviewImage, { page, stats, images: new Map() }), PREVIEW_SIZE);
     expect([...bytes.slice(0, 4)]).toEqual(PNG);
   });
 });

@@ -1,10 +1,12 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { PlayerMatches, PlayerTotalsView } from "@/components/team-page/player-sections";
-import { Leaderboards, RecentResults, TeamHeader } from "@/components/team-page/team-sections";
+import { PlayerHero, PlayerMatches, PlayerTotalsView } from "@/components/team-page/player-sections";
+import { TeamHero } from "@/components/team-page/team-hero";
+import { Leaderboards, RecentResults } from "@/components/team-page/team-sections";
+import { colourFor } from "@/lib/brand";
 import { aggregateTeamStats, parseTeamPage } from "@/lib/team";
-import type { PlayerMatchStats, TeamPageData } from "@/lib/team";
+import type { PlayerMatchStats, PlayerTotals, TeamPageData } from "@/lib/team";
 
 const ALI = "sq-ali";
 const HAMZA = "sq-hamza";
@@ -61,10 +63,19 @@ const render = (element: Parameters<typeof renderToStaticMarkup>[0]) => renderTo
 
 describe("public team page sections", () => {
   it("shows the team and its record", () => {
-    const html = render(createElement(TeamHeader, { page, record: stats.record }));
+    const html = render(createElement(TeamHero, { page, record: stats.record, form: [] }));
     expect(html).toContain("Lions");
     expect(html).toContain("Model Town");
-    expect(html).toContain("P 1 · W 1 · L 0 · T 0 · NR 0");
+    expect(html).toMatch(/Played<\/dt><dd[^>]*><span>1<\/span>/);
+    expect(html).toMatch(/Won<\/dt><dd[^>]*><span>1<\/span>/);
+    expect(html).not.toContain("Tied");
+  });
+
+  it("adds a tied tile once the team has tied", () => {
+    const html = render(
+      createElement(TeamHero, { page, record: { played: 3, won: 1, lost: 1, tied: 1, noResult: 0 }, form: [] }),
+    );
+    expect(html).toMatch(/Tied<\/dt><dd[^>]*><span>1<\/span>/);
   });
 
   it("lists recent results with outcome pills linking to the match", () => {
@@ -79,7 +90,16 @@ describe("public team page sections", () => {
 
   it("groups the leaderboards and links each name to the player page", () => {
     const html = render(createElement(Leaderboards, { stats, names, playerHref: (id: string) => `/t/abcd2345/p/${id}` }));
-    for (const heading of ["Batting", "Bowling", "Fielding", "MVP", "Most runs", "Highest score", "Best figures", "Most catches"]) {
+    for (const heading of [
+      "Batting",
+      "Bowling",
+      "Fielding",
+      "MVP",
+      "Most runs",
+      "Highest score",
+      "Best figures",
+      "Most catches",
+    ]) {
       expect(html).toContain(heading);
     }
     expect(html).toContain('href="/t/abcd2345/p/sq-ali"');
@@ -94,8 +114,68 @@ describe("public team page sections", () => {
     expect(totals).toContain("3/20");
     expect(totals).toContain("Overs");
 
-    const matches = render(createElement(PlayerMatches, { matches: page.matches, playerId: ALI, potm: stats.potm, timeZone: "Asia/Karachi" }));
+    const matches = render(
+      createElement(PlayerMatches, { matches: page.matches, playerId: ALI, potm: stats.potm, timeZone: "Asia/Karachi" }),
+    );
     expect(matches).toContain("45* (30)");
     expect(matches).not.toContain("mmmm3333");
+  });
+});
+
+describe("loud team page", () => {
+  const branded = { ...page, team: { ...page.team, colour: "ocean", logoVersion: 3 } };
+
+  it("paints the hero in the team colour with the logo", () => {
+    const html = render(createElement(TeamHero, { page: branded, record: stats.record, form: ["won", "won", "lost"] }));
+    expect(html).toContain(colourFor("ocean", "Lions").base);
+    expect(html).toContain("teams/abcd2345/logo-3.jpg");
+    expect(html).toContain('alt="Lions logo"');
+  });
+
+  it("falls back to initials without a logo", () => {
+    const html = render(createElement(TeamHero, { page, record: stats.record, form: [] }));
+    expect(html).not.toContain("<img");
+    expect(html).toContain(">L<");
+  });
+
+  it("shows the form strip newest first", () => {
+    const html = render(createElement(TeamHero, { page, record: stats.record, form: ["won", "won", "lost"] }));
+    const strip = html.slice(html.indexOf('data-testid="form-strip"'));
+    const letters = [...strip.slice(0, strip.indexOf("</ol>")).matchAll(/aria-hidden="true">(W|L|T|NR)</g)].map(
+      (match) => match[1],
+    );
+    expect(letters).toEqual(["W", "W", "L"]);
+  });
+
+  it("shows the record numbers in full before any effect runs", () => {
+    const html = render(
+      createElement(TeamHero, { page, record: { played: 12, won: 7, lost: 4, tied: 0, noResult: 1 }, form: [] }),
+    );
+    expect(html).toContain(">12<");
+    expect(html).toContain(">7<");
+  });
+
+  it("crowns each board's leader with a photo", () => {
+    const html = render(
+      createElement(Leaderboards, {
+        stats,
+        names,
+        playerHref: (id: string) => `/t/abcd2345/p/${id}`,
+        colour: colourFor("ocean", "Lions"),
+        photoOf: (id: string) => (id === ALI ? "https://x.test/ali.jpg" : null),
+      }),
+    );
+    expect(html).toContain("data-leader");
+    expect(html).toContain("https://x.test/ali.jpg");
+  });
+
+  it("shows a player's milestone badges", () => {
+    const totals = { ...(stats.players.find((p) => p.playerId === ALI) as PlayerTotals), fifties: 2, hatTricks: 1 };
+    const html = render(
+      createElement(PlayerHero, { player: page.squad[0], totals, colour: colourFor("ocean", "Lions"), photoUrl: null }),
+    );
+    expect(html).toContain("2 fifties");
+    expect(html).toContain("1 hat-trick");
+    expect(html).toContain("Ali");
   });
 });

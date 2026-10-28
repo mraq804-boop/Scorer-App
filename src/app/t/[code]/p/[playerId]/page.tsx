@@ -3,7 +3,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import { Copyright } from "@/components/copyright";
-import { PlayerMatches, PlayerTotalsView } from "@/components/team-page/player-sections";
+import { PlayerHero, PlayerMatches, PlayerTotalsView } from "@/components/team-page/player-sections";
+import { colourFor, photoUrl } from "@/lib/brand";
 import { SeasonLinks } from "@/components/team-page/season-links";
 import { t } from "@/lib/i18n";
 import { getTeamPage, matchesInSeason, seasonQuery, selectedSeason, teamStats } from "@/server/team";
@@ -42,15 +43,12 @@ export default async function PlayerPage({ params, searchParams }: PageProps<"/t
         <ChevronLeft className="size-5 shrink-0 rtl:rotate-180" aria-hidden />
         <bdi className="truncate">{t("teamPage.back", { name: page.team.name })}</bdi>
       </a>
-      <header className="flex flex-col gap-1">
-        <h1 className="truncate text-3xl font-bold">
-          <bdi>{player.name}</bdi>
-        </h1>
-        <p className="flex gap-2 text-muted-foreground">
-          {player.role !== null && <span>{t(`squad.role.${player.role}`)}</span>}
-          {!player.active && <span className="font-semibold">{t("teamPage.player.inactive")}</span>}
-        </p>
-      </header>
+      <PlayerHero
+        player={player}
+        totals={totals}
+        colour={colourFor(page.team.colour, page.team.name)}
+        photoUrl={photoUrl(page.team.code, player.id, player.photoVersion)}
+      />
       <SeasonLinks basePath={`/t/${page.team.code}/p/${player.id}`} seasons={page.seasons} selected={seasonId} />
       <PlayerTotalsView totals={totals} />
       <PlayerMatches
