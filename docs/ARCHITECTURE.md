@@ -79,7 +79,8 @@ Each delivery records who was on strike, at the other end and bowling. The score
 - In the browser, `@supabase/realtime-js` is loaded on demand and joins `match:<id>` as a private channel with the publishable key. Each broadcast event is merged in.
 - Merging dedupes by id, sorts by `seq` and applies only the contiguous prefix, so duplicates, out-of-order events and gaps never double-count or skip a ball.
 - Polling `/api/m/<code>/events?after=<seq>` is the fallback and the catch-up. It starts when the channel is not subscribed within 5 seconds, when a gap appears or when a fetch fails, and runs every `NEXT_PUBLIC_POLL_MS` while the page is visible. The viewer also fetches once every time the channel subscribes. That catch-up carries a unique `fresh` parameter so it skips the CDN, because a copy cached before the subscription could hide the last ball; the route ignores the parameter, and ordinary polls stay cacheable. The route returns up to 1000 events per call with `Cache-Control: public, s-maxage=<LIVE_CACHE_SECONDS>, stale-while-revalidate=10`, so the CDN absorbs most of the load.
-- **Share images.** `/m/<code>/card` (1080 by 1350, shared as a file) and `/m/<code>/opengraph-image` (1200 by 630, the WhatsApp preview) are drawn on the server by `next/og` from the synced events, with bundled Noto Sans and Noto Naskh Arabic fonts. On the scoring screen the share sheet first flushes the phone's outbox (up to 5 seconds), so the image is current.
+- **Share images.** `/m/<code>/card` (1080 by 1350, shared as a file) and `/m/<code>/opengraph-image` (1200 by 630, the WhatsApp preview) are drawn on the server by `next/og` from the synced events, with bundled Noto Sans and Noto Naskh Arabic fonts. On the scoring screen the share sheet first flushes the phone's outbox (up to 5 seconds), so the image is current. Both are posters: the two teams' colour panels split by a gold diagonal, giant scores, a gold result banner, the top three performers, and floodlights, crowd and confetti drawn as inline SVG (see "Team look and posters").
+- **The live page header** (`LiveHero`) shows both teams in their colours with the logo or initials, the score, a LIVE badge or the result, and the batters at the crease, with photos for squad players. A four, a six or a wicket that arrives while the page is open flashes a 1.2-second burst. A win drops confetti once; in a team match, only when the team wins. Both are CSS only and off under reduced motion.
 
 ## Team page
 - **One team per owner.** The tables are:
@@ -108,10 +109,10 @@ Each delivery records who was on strike, at the other end and bowling. The score
   - Matches in progress show as Live and count nowhere until they finish or are marked No result.
   - A match counts in the season whose dates include the day it was played, in the team's time zone.
 - **RPCs.** All are security definer with `search_path = ''`, and `anon` and `authenticated` have no table writes.
-  - Owner only: `update_team` (name, home ground, time zone), `upsert_season`, `upsert_fixture`, `set_potm`, `set_result_override`, `create_scorer_invite`, `remove_scorer`.
+  - Owner only: `update_team` (name, home ground, time zone), `upsert_season`, `upsert_fixture`, `set_potm`, `set_result_override`, `create_scorer_invite`, `remove_scorer`, and the team look: `set_team_colour`, `set_team_logo`, `set_player_photo`.
   - Owner or scorer: `upsert_squad_players` (a scorer can add players but not change them) and `get_my_team`.
   - Google users: `accept_scorer_invite`.
-  - Anyone: `get_team_page(code)`. It returns the team, squad, seasons, fixtures without notes, and up to 500 link-visible team matches with their record, Player of the match and No result. It never returns events.
+  - Anyone: `get_team_page(code)`. It returns the team (with its colour and logo version), squad (with photo versions), seasons, fixtures without notes, and up to 500 link-visible team matches with their record, Player of the match and No result. It never returns events. `get_live_match(code)` adds a `team` block for a team match: code, name, colour, logo version, side, Player of the match, No result, the XI and the photo versions of XI players.
 - **`push_match_events` and teams.**
   - A push with a `team` block links the match to that team when the caller owns the team or scores for it.
   - A push from someone who is no longer a member, such as a removed scorer, still syncs, but the match isn't linked, so no ball is lost.
@@ -119,6 +120,22 @@ Each delivery records who was on strike, at the other end and bowling. The score
   - Linking a fixture marks it played.
   - A record over 16 KB is stored as empty: the match still syncs, but its figures don't count.
 - **Limits per team:** 60 squad players, 300 fixtures, 30 seasons, 10 scorers and 5 open invites. Names can be up to 40 characters, grounds 60 and fixture notes 280.
+
+## Team look and posters
+- **Brand.** The owner picks one of 10 palette colours (`src/lib/brand/palette.ts`; each has a base, dark, light and text shade) and uploads a logo and player photos on `/team`. A team without a colour, and every opponent, gets one from a stable hash of its name. Without a picture, an initials circle in the team colour stands in.
+- **Pictures.** The phone centre-crops and resizes each picture before upload (`src/lib/media/prepare-image.ts`): logo 512 px, photo 384 px, JPEG at quality 0.82, refused above 300 KB. They go to the public Storage bucket `team-media` at `teams/<team code>/logo-<v>.jpg` and `teams/<team code>/players/<player id>-<v>.jpg`.
+  - The version number is part of the file name, so each new picture has a new address and can be cached for a year (`cacheControl: 31536000`).
+  - `replaceTeamPicture` uploads the new file, saves the new version with the RPC, then deletes the old file. If the save fails, it deletes the new file and the old picture stays.
+  - Storage policies on `storage.objects` let a signed-in (not anonymous) owner insert, update and delete only under `teams/<their team code>/`, checked through the definer helper `owned_team_code()`. Anyone can read. The bucket allows only `image/jpeg`, up to 307200 bytes.
+- **Posters.** Image routes, all drawn with `next/og`:
+  - `/m/<code>/card` and `/m/<code>/opengraph-image`: the result poster and preview for every match.
+  - `/t/<code>/opengraph-image`: the team colour, logo, record and leaders with photos.
+  - `/m/<code>/poster/<player id>` (1080 by 1350, `public, s-maxage=60`): a player's big photo, a headline badge (Player of the match, Hundred, Fifty, Five wickets, Hat-trick, Three wickets, in that order), giant figures, team colour, logo and opponent. Only squad players in that match's XI get one, and only once the match is finished or marked No result. Anything else is a 404.
+
+  Satori needs absolute image addresses and fails the whole image when one does not load, so the server fetches each picture first (`embedImages`: 3-second timeout, `image/*` only) and passes data URLs. A picture that does not load falls back to initials.
+- **One Player of the match rule.** The owner's pick wins when that player was in the XI; otherwise the points formula picks from the XI (`potmFromState`, `matchPotm`). The posters, live page and team page all use it, and an owner's No result shows as No result everywhere.
+- **Effects.** Count-ups on the record tiles, confetti on a win and bursts on the live page are CSS keyframes plus a small IntersectionObserver, with no animation library. `effectsEnabled` turns them off when the phone asks for reduced motion, and numbers are always rendered in full first.
+- **Badges.** Player totals add `hundreds`, `threeFors`, `fiveFors` and `hatTricks`. A hat-trick is three legal balls in a row by one bowler in one innings, each a wicket credited to the bowler. Wides and no-balls in between don't break the run; a run-out does. The match record stores `bowling.hatTricks` only when it is above 0, so records stay version 1 and older ones still read.
 
 ## Folders
 | Path | What |
@@ -128,6 +145,8 @@ Each delivery records who was on strike, at the other end and bowling. The score
 | `src/lib/identity` | Guest session, Google sign-in and claim, take-over |
 | `src/lib/team` | Team logic: the per-match record, Player of the match points, seasons, totals and leaderboards (pure), plus the phone cache and outbox (`local.ts`), the RPC calls (`remote.ts`) and the public page parser (`page-data.ts`) |
 | `src/lib/live`, `src/lib/share`, `src/lib/i18n` | Viewer feed and merge, share text and summary, the message catalog |
+| `src/lib/brand`, `src/lib/media` | Team palette and picture addresses; picture crop and resize on the phone |
+| `src/components/art`, `src/components/effects` | Inline SVG cricket artwork shared by pages and posters; confetti, count-up and the reduced-motion check |
 | `src/server` | Server-only code: live reads, the cached team page read (`team.ts`) and image rendering |
 | `src/app` | Routes; `src/components` and `src/hooks` hold the UI (`components/team` is the owner page, `components/team-page` the public page) |
 | `supabase/migrations` | Tables, RLS, RPCs and the Realtime trigger and policy; `supabase/setup-all.sql` is every migration in one file for a new project |
@@ -135,7 +154,7 @@ Each delivery records who was on strike, at the other end and bowling. The score
 ## Tests
 | Layer | Where | Command |
 |---|---|---|
-| Unit (vitest) | `tests/unit`: the engine (golden match, fast-check properties), local store on fake IndexedDB, sync loop, live feed and merge, identity, share text, the service worker script, route handlers, team records, stats and page sections, form validation | `npm test` |
+| Unit (vitest) | `tests/unit`: the engine (golden match, fast-check properties), local store on fake IndexedDB, sync loop, live feed and merge, identity, share text, the service worker script, route handlers, team records, stats and page sections, form validation, the palette, hat-tricks, posters (rendered to PNG in `%TEMP%/cricket-posters`) and live bursts | `npm test` |
 | Database (vitest + PGlite) | `tests/integration`: every migration on in-process Postgres with stand-ins for the Supabase auth and Realtime schemas, run as each kind of caller | `npm test` |
 | End to end (Playwright, desktop Edge and Pixel 7) | `tests/e2e`: the production build on port 3200 with placeholder Supabase values, and a stub for sync | `npx playwright test` |
 | End to end with a backend | The backend tests in `live.spec.ts` and `share.spec.ts`, all of `offline-sync.spec.ts`, and the team page render test in `team-page.spec.ts` (which also needs `E2E_TEAM_CODE`, a team made by hand) need a real development Supabase project in `.env.local` | `E2E_BACKEND=1 npx playwright test` |

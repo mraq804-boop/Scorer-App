@@ -5,12 +5,14 @@ Offline-first cricket scoring app for the phone. Score a match with no signal, t
 - Every ball is saved on the phone first, then synced to Supabase when a connection is available.
 - Anyone with the match link can follow the score live. Viewers never sign in.
 - A team owner keeps a squad, fixtures and seasons on `/team`. Matches scored for the team add up into a public team page (`/t/<code>`) with results, player stats and leaderboards.
+- The owner can give the team a colour, a logo and player photos. The live page, the team and player pages, and every share image use them, and each player gets a poster for each match.
 - Built with Next.js 16, Supabase and Vercel, as an installable PWA.
 
 ## Docs
 - [Design spec](docs/superpowers/specs/2026-10-23-score-and-share-design.md)
 - [Implementation plan](docs/superpowers/plans/2026-10-23-score-and-share.md)
 - [Team page spec](docs/superpowers/specs/2026-10-27-team-page-design.md) and [plan](docs/superpowers/plans/2026-10-27-team-page.md)
+- [Visual makeover spec](docs/superpowers/specs/2026-10-28-visual-makeover-design.md) and [plan](docs/superpowers/plans/2026-10-28-visual-makeover.md)
 - [Architecture](docs/ARCHITECTURE.md): event flow, wire shapes, security model, offline design, tests
 - [Deployment](docs/DEPLOYMENT.md): Supabase and Vercel setup, pre-launch and post-deploy checks, free-tier limits
 
@@ -58,7 +60,7 @@ npm start -- -p 3200
 ```bash
 npx playwright test
 ```
-- `npx playwright test` starts `next start -p 3200` itself, or reuses a server already on that port. The server runs the last build, so rebuild after changing code or public env, and stop an old server first.
+- `npx playwright test` starts `next start -p 3200` itself, or reuses a server already on that port. The server runs the last build, so rebuild after changing code or public env, and stop an old server first. Public env is baked in at build time, so build with the values in `playwright.config.ts` (`NEXT_PUBLIC_SITE_URL=http://localhost:3200`). A build made with a production `NEXT_PUBLIC_SITE_URL` fails the link checks.
 - It runs a desktop Edge project and a Pixel 7 project. Set `E2E_CHANNEL` to use another browser channel (the default is `msedge`), or `E2E_BASE_URL` to test an already-running site.
 - Specs that need Supabase are skipped unless `E2E_BACKEND=1`. They need a real development project in `.env.local` and a build made with it, and they write real matches: never run them against production.
 ```bash
