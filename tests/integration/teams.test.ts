@@ -747,7 +747,7 @@ describe("team brand", () => {
     expect(await teamPage(lions.code)).toMatchObject({ team: { logoVersion: null } });
     expect((await squadOf(lions.code)).find((p) => p.id === ali.id)).not.toHaveProperty("photoVersion");
 
-    await expectDbError(setColour(OWNER, "gold"), /check constraint/);
+    await expectDbError(setColour(OWNER, "gold"), /invalid_colour/);
     const eagle = { id: crypto.randomUUID(), name: "Eagle", role: null, active: true };
     await upsertSquad(OTHER_OWNER, eagles.id, [eagle]);
     await expectDbError(setPhoto(OWNER, eagle.id, 1), /not_team_owner/);
@@ -816,6 +816,39 @@ describe("team media storage", () => {
     expect(await look(OWNER)).toEqual([{ name }]);
     expect(await look(OTHER_OWNER)).toEqual([]);
     expect(await look(GUEST)).toEqual([]);
+  });
+
+  it("keeps other owners and strangers away from a team's pictures", async () => {
+    const name = `teams/${lions.code}/players/${ali.id}-11.jpg`;
+    await insert(OWNER, name);
+    for (const actor of [OTHER_OWNER, STRANGER, SCORER]) {
+      expect(
+        await rpc(actor, `update storage.objects set owner = null where bucket_id = 'team-media' and name = $1 returning name`, [name]),
+      ).toEqual([]);
+      expect(await rpc(actor, `delete from storage.objects where bucket_id = 'team-media' and name = $1 returning name`, [name])).toEqual(
+        [],
+      );
+    }
+    await expectDbError(insert(STRANGER, `teams/${lions.code}/players/x-2.jpg`), /row-level security/);
+    expect(await rows(`select name from storage.objects where name = $1`, [name])).toEqual([{ name }]);
+  });
+
+  it("caps a team at 100 pictures", async () => {
+    const [{ count }] = await rows<{ count: number }>(
+      `select count(*)::int as count from storage.objects where bucket_id = 'team-media' and name like $1`,
+      [`teams/${lions.code}/%`],
+    );
+    await rows(
+      `insert into storage.objects (bucket_id, name) select 'team-media', $1 || g || '.jpg' from generate_series(1, $2::int) g`,
+      [`teams/${lions.code}/players/fill-`, 100 - count],
+    );
+    await expectDbError(insert(OWNER, `teams/${lions.code}/logo-99.jpg`), /row-level security/);
+
+    await rpc(OWNER, `delete from storage.objects where bucket_id = 'team-media' and name = $1`, [
+      `teams/${lions.code}/players/fill-1.jpg`,
+    ]);
+    await insert(OWNER, `teams/${lions.code}/logo-99.jpg`);
+    await rows(`delete from storage.objects where name like $1`, [`teams/${lions.code}/players/fill-%`]);
   });
 
   it("makes the bucket public, JPEG only and at most 300 KB", async () => {

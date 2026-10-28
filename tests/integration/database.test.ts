@@ -295,6 +295,7 @@ describe("privileges", () => {
       "match_topic_readable",
       "my_team_ids",
       "owned_team_code",
+      "owned_team_media_count",
       "push_match_events",
       "remove_scorer",
       "set_player_photo",
