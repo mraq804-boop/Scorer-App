@@ -8,3 +8,10 @@ export function effectsEnabled(matchMedia: MatchMedia | undefined): boolean {
 export function browserEffectsEnabled(): boolean {
   return typeof window !== "undefined" && effectsEnabled(window.matchMedia?.bind(window));
 }
+
+export type CountUpStep = "pulse" | "zero" | "wait" | "count";
+
+export function countUpStep(firstLook: boolean, visible: boolean): CountUpStep {
+  if (firstLook) return visible ? "pulse" : "zero";
+  return visible ? "count" : "wait";
+}

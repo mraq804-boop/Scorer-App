@@ -252,9 +252,26 @@
   animation: ball-burst 1.2s ease-out forwards;
 }
 
+@keyframes tile-pulse {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.tile-pulse {
+  animation: tile-pulse 0.6s ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .confetti-piece,
-  .pop-in {
+  .pop-in,
+  .tile-pulse {
     animation: none;
   }
   .confetti-piece,

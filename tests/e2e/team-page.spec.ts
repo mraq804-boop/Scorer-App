@@ -26,6 +26,14 @@ test.describe("with a backend", () => {
     "needs a Supabase project and a team: set E2E_BACKEND=1 and E2E_TEAM_CODE",
   );
 
+  test("the team page holds still when the phone asks for reduced motion", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto(`/t/${process.env.E2E_TEAM_CODE}?season=all`);
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.locator(".confetti-piece")).toHaveCount(0);
+    await expect(page.locator(".tile-pulse")).toHaveCount(0);
+  });
+
   test("the team page renders an existing team", async ({ page }) => {
     const response = await page.goto(`/t/${process.env.E2E_TEAM_CODE}?season=all`);
     expect(response?.status()).toBe(200);
