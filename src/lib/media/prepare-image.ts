@@ -16,7 +16,7 @@ export function squareCrop(width: number, height: number): { sx: number; sy: num
 }
 
 export async function prepareImage(file: Blob, size: number): Promise<Blob> {
-  const bitmap = await createImageBitmap(file);
+  const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
   try {
     const { sx, sy, side } = squareCrop(bitmap.width, bitmap.height);
     const canvas = document.createElement("canvas");

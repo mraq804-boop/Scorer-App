@@ -98,3 +98,15 @@ test("a scorer sees no brand controls", async ({ page }) => {
   await expect(page.getByRole("region", { name: "Team look" })).toHaveCount(0);
   await expect(page.getByLabel(/^Add a photo of/)).toHaveCount(0);
 });
+
+test("a photo that won't load shows the player's initials instead of a broken image", async ({ page }) => {
+  const base = team();
+  await signIn(page, team({ squad: base.squad.map((player) => (player.id === ALI ? { ...player, photoVersion: 5 } : player)) }));
+  await page.route("**/storage/v1/object/public/**", (route) => route.fulfill({ status: 404, headers: CORS, body: "" }));
+  await page.goto("/team");
+  const squad = page.getByRole("region", { name: "Squad" });
+
+  await expect(squad.getByLabel("Change the photo of Ali")).toBeAttached();
+  await expect(squad.locator(`img[src*="players/${ALI}-5.jpg"]`)).toHaveCount(0);
+  await expect(squad.getByText("A", { exact: true })).toBeVisible();
+});

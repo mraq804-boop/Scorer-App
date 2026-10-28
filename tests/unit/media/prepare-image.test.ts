@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { LOGO_SIZE, MAX_UPLOAD_BYTES, PHOTO_SIZE, squareCrop } from "@/lib/media/prepare-image";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { LOGO_SIZE, MAX_UPLOAD_BYTES, PHOTO_SIZE, prepareImage, squareCrop } from "@/lib/media/prepare-image";
 
 describe("squareCrop", () => {
   it("takes the centre square of a wide picture", () => {
@@ -16,5 +16,22 @@ describe("squareCrop", () => {
 
   it("uses the agreed sizes", () => {
     expect([LOGO_SIZE, PHOTO_SIZE, MAX_UPLOAD_BYTES]).toEqual([512, 384, 307200]);
+  });
+});
+
+describe("prepareImage", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("reads a phone photo the right way up", async () => {
+    const decode = vi.fn(async () => {
+      throw new Error("stop after decode");
+    });
+    vi.stubGlobal("createImageBitmap", decode);
+    const file = new Blob(["jpeg"], { type: "image/jpeg" });
+
+    await expect(prepareImage(file, PHOTO_SIZE)).rejects.toThrow("stop after decode");
+    expect(decode).toHaveBeenCalledWith(file, { imageOrientation: "from-image" });
   });
 });
