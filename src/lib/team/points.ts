@@ -33,3 +33,14 @@ export function matchPoints(p: PlayerMatchStats): number {
   const fieldingPoints = (fielding.catches + fielding.runOuts + fielding.stumpings) * POINTS_PER_FIELDING;
   return battingPoints + bowlingPoints + fieldingPoints;
 }
+
+export const HUNDRED_RUNS = 100;
+export const THREE_WICKETS = 3;
+export const FIVE_WICKETS = 5;
+
+type Ranked = { stats: PlayerMatchStats; points: number };
+
+export function bestByPoints<T extends Ranked>(entries: readonly T[], order: (idA: string, idB: string) => number): T | undefined {
+  const runs = (entry: T) => entry.stats.batting?.runs ?? 0;
+  return [...entries].sort((a, b) => b.points - a.points || runs(b) - runs(a) || order(a.stats.playerId, b.stats.playerId))[0];
+}

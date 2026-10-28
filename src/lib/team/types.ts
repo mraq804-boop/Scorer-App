@@ -7,7 +7,7 @@ export type Outcome = "won" | "lost" | "tied";
 export type PlayerMatchStats = {
   playerId: string;
   batting: { runs: number; balls: number; fours: number; sixes: number; notOut: boolean } | null;
-  bowling: { legalBalls: number; runs: number; wickets: number; maidens: number; dots: number } | null;
+  bowling: { legalBalls: number; runs: number; wickets: number; maidens: number; dots: number; hatTricks?: number } | null;
   fielding: { catches: number; runOuts: number; stumpings: number };
 };
 export type TeamMatchRecord = {
@@ -55,6 +55,10 @@ export type PlayerTotals = {
   highest: { runs: number; notOut: boolean } | null;
   thirties: number;
   fifties: number;
+  hundreds: number;
+  threeFors: number;
+  fiveFors: number;
+  hatTricks: number;
   average: number | null;
   strikeRate: number | null;
   legalBalls: number;

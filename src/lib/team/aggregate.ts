@@ -1,4 +1,4 @@
-import { FIFTY_RUNS, THIRTY_RUNS, matchPoints } from "./points";
+import { FIFTY_RUNS, FIVE_WICKETS, HUNDRED_RUNS, THIRTY_RUNS, THREE_WICKETS, bestByPoints, matchPoints } from "./points";
 import { seasonOf } from "./seasons";
 import type {
   LeaderboardKey,
@@ -61,10 +61,6 @@ function appearancesIn(record: TeamMatchRecord, squadIds: Set<string>): Appearan
     });
 }
 
-function runsOf(appearance: Appearance): number {
-  return appearance.stats.batting?.runs ?? 0;
-}
-
 function pickPotm(
   match: CountedMatch,
   appearances: Appearance[],
@@ -74,10 +70,7 @@ function pickPotm(
   const override = match.potmPlayerId;
   if (override !== null && squadIds.has(override)) return { playerId: override, suggested: false };
 
-  const ranked = [...appearances].sort(
-    (a, b) => b.points - a.points || runsOf(b) - runsOf(a) || order(a.stats.playerId, b.stats.playerId),
-  );
-  const top = ranked[0];
+  const top = bestByPoints(appearances, order);
   return top !== undefined && top.points > 0 ? { playerId: top.stats.playerId, suggested: true } : null;
 }
 
@@ -94,6 +87,10 @@ function emptyTotals(playerId: string): PlayerTotals {
     highest: null,
     thirties: 0,
     fifties: 0,
+    hundreds: 0,
+    threeFors: 0,
+    fiveFors: 0,
+    hatTricks: 0,
     average: null,
     strikeRate: null,
     legalBalls: 0,
@@ -118,7 +115,8 @@ function addBatting(totals: PlayerTotals, batting: NonNullable<PlayerMatchStats[
   totals.fours += batting.fours;
   totals.sixes += batting.sixes;
   if (batting.notOut) totals.notOuts += 1;
-  if (batting.runs >= FIFTY_RUNS) totals.fifties += 1;
+  if (batting.runs >= HUNDRED_RUNS) totals.hundreds += 1;
+  else if (batting.runs >= FIFTY_RUNS) totals.fifties += 1;
   else if (batting.runs >= THIRTY_RUNS) totals.thirties += 1;
 
   const { highest } = totals;
@@ -135,6 +133,9 @@ function addBowling(totals: PlayerTotals, bowling: NonNullable<PlayerMatchStats[
   totals.wickets += bowling.wickets;
   totals.maidens += bowling.maidens;
   totals.dots += bowling.dots;
+  totals.hatTricks += bowling.hatTricks ?? 0;
+  if (bowling.wickets >= FIVE_WICKETS) totals.fiveFors += 1;
+  if (bowling.wickets >= THREE_WICKETS) totals.threeFors += 1;
 
   const { best } = totals;
   const better =

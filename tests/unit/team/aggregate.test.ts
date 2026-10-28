@@ -621,3 +621,14 @@ describe("aggregateTeamStats squad handling", () => {
     expect(totalsOf(aggregate([m]), "Bilal")).toMatchObject({ matches: 1, innings: 0 });
   });
 });
+
+describe("aggregateTeamStats milestones", () => {
+  it("counts hundreds apart from fifties, and three- and five-wicket hauls and hat-tricks", () => {
+    const result = aggregate([
+      game("m1", [stats("Ali", { bat: { runs: 104, balls: 60 } }), stats("Bilal", { bowl: { legalBalls: 24, wickets: 5, hatTricks: 1 } })]),
+      game("m2", [stats("Ali", { bat: { runs: 55, balls: 40 } }), stats("Bilal", { bowl: { legalBalls: 24, wickets: 3 } })]),
+    ]);
+    expect(totalsOf(result, "Ali")).toMatchObject({ hundreds: 1, fifties: 1, thirties: 0 });
+    expect(totalsOf(result, "Bilal")).toMatchObject({ threeFors: 2, fiveFors: 1, hatTricks: 1 });
+  });
+});
