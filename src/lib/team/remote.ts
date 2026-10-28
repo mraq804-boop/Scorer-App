@@ -24,6 +24,8 @@ export type TeamError =
   | "invalid_time_zone"
   | "not_in_xi"
   | "refused"
+  | "picture_too_large"
+  | "picture_refused"
   | "unknown";
 
 export type TeamResult<T> = { ok: true; value: T } | { ok: false; error: TeamError };
@@ -253,12 +255,20 @@ export async function deleteTeamPicture(client: SupabaseClient, path: string): P
   }
 }
 
+function uploadFailure(error: unknown): TeamError {
+  const code = isObject(error) ? Number(error.statusCode ?? error.status) : Number.NaN;
+  if (code === 413) return "picture_too_large";
+  if (code === 403) return "picture_refused";
+  if (code === 401) return "not_signed_in";
+  return Number.isNaN(code) || isTransient(code) ? "network" : "unknown";
+}
+
 export async function replaceTeamPicture(client: SupabaseClient, change: PictureChange): Promise<TeamResult<void>> {
   try {
     const { error } = await client.storage
       .from(MEDIA_BUCKET)
       .upload(change.newPath, change.blob, { contentType: "image/jpeg", cacheControl: "31536000", upsert: false });
-    if (error !== null) return { ok: false, error: "network" };
+    if (error !== null) return { ok: false, error: uploadFailure(error) };
   } catch {
     return { ok: false, error: "network" };
   }

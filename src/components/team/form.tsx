@@ -30,6 +30,10 @@ export function teamErrorMessage(error: TeamError, quota: string = t("team.error
       return t("team.error.notAllowed");
     case "quota_exceeded":
       return quota;
+    case "picture_too_large":
+      return t("brand.error.tooLarge");
+    case "picture_refused":
+      return t("brand.error.refused");
     default:
       return t("team.error.saveFailed");
   }

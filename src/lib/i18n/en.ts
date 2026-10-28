@@ -515,6 +515,7 @@ export const en = {
   "brand.changePhoto": "Change the photo of {name}",
   "brand.removePhoto": "Remove photo",
   "brand.error.tooLarge": "That picture is too big, even after shrinking. Try another one.",
+  "brand.error.refused": "Couldn't save that picture. A team can keep up to 100 pictures, so remove one you don't use and try again.",
   "brand.error.unreadable": "Couldn't read that picture. Try a JPEG or PNG photo.",
   "teamPage.form": "Form",
   "teamPage.tile.played": "Played",

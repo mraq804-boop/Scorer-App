@@ -26,6 +26,7 @@ import {
   upsertSquadPlayers,
 } from "@/lib/team/remote";
 import type { TeamError } from "@/lib/team/remote";
+import { teamErrorMessage } from "@/components/team/form";
 import { addSquadPlayerOffline, cacheTeam, getCachedTeam, getSquadOutbox } from "@/lib/team/local";
 import { TEAM_ID, cachedFixture, cachedTeam, squadPlayer } from "../../helpers/team";
 
@@ -804,6 +805,31 @@ describe("replaceTeamPicture", () => {
     });
     expect(save).not.toHaveBeenCalled();
     expect(calls).toEqual(["upload teams/x/logo-2.jpg"]);
+  });
+
+  it("tells a too-big picture and a refused upload apart from a lost connection", async () => {
+    const save = vi.fn(async () => ({ ok: true as const, value: undefined }));
+    const upload = async (uploadError: unknown) =>
+      replaceTeamPicture(storageClient(uploadError).client, { newPath: "teams/x/logo-2.jpg", oldPath: null, blob, save });
+
+    expect(await upload({ message: "Payload too large", status: 413, statusCode: "413" })).toEqual({
+      ok: false,
+      error: "picture_too_large",
+    });
+    expect(await upload({ message: "new row violates row-level security policy", status: 400, statusCode: "403" })).toEqual({
+      ok: false,
+      error: "picture_refused",
+    });
+    expect(await upload({ message: "Service Unavailable", status: 503, statusCode: "503" })).toEqual({ ok: false, error: "network" });
+    expect(await upload({ message: "Failed to fetch" })).toEqual({ ok: false, error: "network" });
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("explains picture errors in plain words", () => {
+    expect(teamErrorMessage("picture_too_large")).toBe("That picture is too big, even after shrinking. Try another one.");
+    expect(teamErrorMessage("picture_refused")).toBe(
+      "Couldn't save that picture. A team can keep up to 100 pictures, so remove one you don't use and try again.",
+    );
   });
 
   it("removes the new picture and keeps the old one when the save is refused", async () => {
