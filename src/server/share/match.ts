@@ -19,11 +19,14 @@ export type MatchBrand = {
 
 export type SharedMatch = { code: string; state: MatchState; brand: MatchBrand };
 
-async function brandFor(team: LiveTeam | null): Promise<MatchBrand> {
+export type PhotoPicker = (state: MatchState, side: TeamSide) => readonly string[];
+
+async function brandFor(team: LiveTeam | null, state: MatchState, pick: PhotoPicker): Promise<MatchBrand> {
   if (team === null) return null;
   const logo = logoUrl(team.code, team.logoVersion);
   const photoOf = (playerId: string) => photoUrl(team.code, playerId, team.photos[playerId]);
-  const images = await embedImages([logo, ...team.xi.map(photoOf)]);
+  const wanted = pick(state, team.side).filter((playerId) => team.xi.includes(playerId));
+  const images = await embedImages([logo, ...wanted.map(photoOf)]);
   const embedded = (url: string | null) => (url === null ? null : (images.get(url) ?? null));
   return {
     side: team.side,
@@ -36,9 +39,10 @@ async function brandFor(team: LiveTeam | null): Promise<MatchBrand> {
   };
 }
 
-export async function loadSharedMatch(code: string): Promise<SharedMatch | null> {
+export async function loadSharedMatch(code: string, pick: PhotoPicker = () => []): Promise<SharedMatch | null> {
   if (!CODE_RE.test(code)) return null;
   const live = await getLiveMatch(code);
   if (live === null) return null;
-  return { code, state: replay(live.events), brand: await brandFor(live.match.team ?? null) };
+  const state = replay(live.events);
+  return { code, state, brand: await brandFor(live.match.team ?? null, state, pick) };
 }

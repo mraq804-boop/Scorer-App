@@ -3,11 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createElement } from "react";
 import type { ReactElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { headlineLabel } from "@/lib/i18n/team";
 import type { MatchBrand } from "@/server/share/match";
 import { PLAYER_POSTER_SIZE, PlayerPoster, posterBrand } from "@/server/share/player-poster";
 import { bannerText, brandPotm, fitFontSize } from "@/server/share/poster-parts";
+import type { MatchState } from "@/lib/scoring";
 import { posterOutcome } from "@/lib/team";
 import { PREVIEW_SIZE, PreviewImage } from "@/server/share/preview-image";
 import { renderPng } from "@/server/share/render";
@@ -175,5 +177,17 @@ describe("long result posters", { timeout: 30_000 }, () => {
     const preview = await png("preview-long", createElement(PreviewImage, { state, brand: null }), PREVIEW_SIZE);
     expect([...poster.slice(0, 4)]).toEqual(PNG);
     expect([...preview.slice(0, 4)]).toEqual(PNG);
+  });
+});
+
+describe("result banner trophy", () => {
+  const TROPHY = 'viewBox="0 0 60 64"';
+  const markup = (state: MatchState) => renderToStaticMarkup(createElement(ResultPoster, { state, brand: null }));
+
+  it("shows the trophy only beside a win", () => {
+    const live = new TestMatch();
+    live.ball({ runs: 1 });
+    expect(markup(finishedMatch().state)).toContain(TROPHY);
+    expect(markup(live.state)).not.toContain(TROPHY);
   });
 });

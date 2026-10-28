@@ -102,7 +102,7 @@ export function ResultPoster({ state, brand }: ResultPosterProps) {
           color: GOLD_INK,
         }}
       >
-        <Trophy width={52} height={56} colour={GOLD_INK} />
+        {outcome.kind === "won" && <Trophy width={52} height={56} colour={GOLD_INK} />}
         <Clip size={fitFontSize(banner, 46, 28, BANNER_WIDTH)} weight={700} color={GOLD_INK}>
           {banner}
         </Clip>

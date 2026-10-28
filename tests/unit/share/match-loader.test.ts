@@ -53,7 +53,7 @@ describe("loadSharedMatch", () => {
 
   it("fills the brand of a team match with embedded pictures", async () => {
     getLiveMatch.mockResolvedValue(live(TEAM));
-    const brand = (await loadSharedMatch("abcd2345"))?.brand;
+    const brand = (await loadSharedMatch("abcd2345", () => ["p-Ali"]))?.brand;
     expect(brand).toMatchObject({
       side: "A",
       colour: "ocean",
@@ -67,9 +67,24 @@ describe("loadSharedMatch", () => {
     expect(vi.mocked(fetch)).toHaveBeenCalledWith(`${BASE}/teams/lion2345/logo-2.jpg`, expect.anything());
   });
 
+  it("fetches only the photos the image will draw", async () => {
+    getLiveMatch.mockResolvedValue(live({ ...TEAM, photos: { "p-Ali": 3, "p-Usman": 4 } }));
+    const picked = vi.fn(() => ["p-Usman"]);
+    await loadSharedMatch("abcd2345", picked);
+    expect(picked).toHaveBeenCalledWith(expect.objectContaining({ status: "in_progress" }), "A");
+    expect(vi.mocked(fetch).mock.calls.map(([url]) => url)).toEqual([
+      `${BASE}/teams/lion2345/logo-2.jpg`,
+      `${BASE}/teams/lion2345/players/p-Usman-4.jpg`,
+    ]);
+
+    vi.mocked(fetch).mockClear();
+    await loadSharedMatch("abcd2345");
+    expect(vi.mocked(fetch).mock.calls.map(([url]) => url)).toEqual([`${BASE}/teams/lion2345/logo-2.jpg`]);
+  });
+
   it("falls back to initials when a picture does not load", async () => {
     getLiveMatch.mockResolvedValue(live({ ...TEAM, logoVersion: 9, photos: { "p-Ali": 8 } }));
-    const brand = (await loadSharedMatch("abcd2345"))?.brand;
+    const brand = (await loadSharedMatch("abcd2345", () => ["p-Ali"]))?.brand;
     expect(brand?.logoUrl).toBeNull();
     expect(brand?.photoUrlOf("p-Ali")).toBeNull();
   });
