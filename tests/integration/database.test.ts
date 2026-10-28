@@ -294,10 +294,14 @@ describe("privileges", () => {
       "get_team_page",
       "match_topic_readable",
       "my_team_ids",
+      "owned_team_code",
       "push_match_events",
       "remove_scorer",
+      "set_player_photo",
       "set_potm",
       "set_result_override",
+      "set_team_colour",
+      "set_team_logo",
       "take_over_scoring",
       "update_team",
       "upsert_fixture",
@@ -390,6 +394,7 @@ describe("live reads", () => {
       teamB: "Tigers",
       status: "in_progress",
       updatedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
+      team: null,
     });
     expect(live?.events).toEqual(m1Events.map(flat));
 

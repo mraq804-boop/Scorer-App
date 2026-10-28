@@ -9,6 +9,13 @@ create role service_role nologin bypassrls;
 create schema extensions;
 create schema auth;
 create schema realtime;
+create schema storage;
+
+create table storage.buckets (id text primary key, name text not null, public boolean default false, file_size_limit bigint, allowed_mime_types text[]);
+create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text references storage.buckets, name text not null, owner uuid);
+alter table storage.objects enable row level security;
+create function storage.foldername(name text) returns text[] language sql immutable as $$
+  select (string_to_array(name, '/'))[1:array_length(string_to_array(name, '/'), 1) - 1] $$;
 
 create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb default '{}'::jsonb);
 create function auth.jwt() returns jsonb language sql stable as $$
@@ -32,7 +39,8 @@ create function realtime.send(payload jsonb, event text, topic text, private boo
 language sql security definer set search_path = '' as $$
   insert into realtime.messages (payload, event, topic, private) values ($1, $2, $3, $4) $$;
 
-grant usage on schema public, auth, extensions, realtime to anon, authenticated, service_role;
+grant usage on schema public, auth, extensions, realtime, storage to anon, authenticated, service_role;
+grant select, insert, update, delete on storage.objects to anon, authenticated;
 grant select, insert on realtime.messages to anon, authenticated;
 grant usage on sequence realtime.messages_id_seq to anon, authenticated;
 alter default privileges in schema public grant all on tables to anon, authenticated, service_role;

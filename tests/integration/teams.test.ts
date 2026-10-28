@@ -568,7 +568,14 @@ describe("get_team_page", () => {
     await rpc("service", `update public.matches set visibility = 'private' where id = $1`, [hidden.id]);
 
     const page = await teamPage(lions.code);
-    expect(page?.team).toEqual({ code: lions.code, name: "Lions", homeGround: "Model Town Ground", timeZone: "Asia/Karachi" });
+    expect(page?.team).toEqual({
+      code: lions.code,
+      name: "Lions",
+      homeGround: "Model Town Ground",
+      timeZone: "Asia/Karachi",
+      colour: null,
+      logoVersion: null,
+    });
     expect(page?.squad).toEqual([ali, usman, hamza]);
     expect(page?.seasons).toEqual([{ id: expect.any(String), name: "Winter 26/27", startsOn: "2026-11-01", endsOn: "2027-02-28" }]);
     expect(keysDeep(page)).not.toContain("events");
@@ -638,8 +645,12 @@ describe("access", () => {
       "my_team_ids()": ["authenticated"],
       "push_match_events(p_match jsonb, p_device uuid, p_events jsonb)": ["authenticated"],
       "remove_scorer(p_user uuid)": ["authenticated"],
+      "owned_team_code()": ["authenticated"],
+      "set_player_photo(p_player uuid, p_version integer)": ["authenticated"],
       "set_potm(p_code text, p_player uuid)": ["authenticated"],
       "set_result_override(p_code text, p_no_result boolean)": ["authenticated"],
+      "set_team_colour(p_colour text)": ["authenticated"],
+      "set_team_logo(p_version integer)": ["authenticated"],
       "team_seasons_json(p_team uuid)": [],
       "team_squad_json(p_team uuid)": [],
       "update_team(p_name text, p_home_ground text, p_time_zone text)": ["authenticated"],
@@ -691,5 +702,105 @@ describe("update_team", () => {
     await expectDbError(updateTeam(EDITOR, "h".repeat(41), null, "Asia/Karachi"), /check constraint/);
     const { code } = await teamOf(EDITOR);
     expect(await teamPage(code)).toMatchObject({ team: { name: "Hawks CC" } });
+  });
+});
+
+describe("team brand", () => {
+  type LiveTeam = { match: { team: Record<string, unknown> | null } };
+
+  function setColour(actor: Actor, colour: string) {
+    return call(actor, "set_team_colour", [colour]);
+  }
+
+  function setLogo(actor: Actor, version: number | null) {
+    return call(actor, "set_team_logo", [version]);
+  }
+
+  function setPhoto(actor: Actor, player: string, version: number | null) {
+    return call(actor, "set_player_photo", [player, version]);
+  }
+
+  async function squadOf(code: string) {
+    return ((await teamPage(code))?.squad ?? []) as Record<string, unknown>[];
+  }
+
+  it("lets only the owner set the colour, logo and photos", async () => {
+    for (const actor of [SCORER, STRANGER, GUEST, "anon"] as const) {
+      await expectDbError(setColour(actor, "ocean"), /not_team_owner|permission denied/);
+      await expectDbError(setLogo(actor, 1), /not_team_owner|permission denied/);
+      await expectDbError(setPhoto(actor, ali.id, 1), /not_team_owner|permission denied/);
+    }
+    await setColour(OWNER, "ocean");
+    await setLogo(OWNER, 2);
+    await setPhoto(OWNER, ali.id, 3);
+
+    expect(await teamPage(lions.code)).toMatchObject({ team: { colour: "ocean", logoVersion: 2 } });
+    expect(await myTeam(OWNER)).toMatchObject({ team: { colour: "ocean", logoVersion: 2 } });
+    const squad = await squadOf(lions.code);
+    expect(squad.find((p) => p.id === ali.id)).toMatchObject({ photoVersion: 3 });
+    expect(squad.find((p) => p.id === usman.id)).not.toHaveProperty("photoVersion");
+  });
+
+  it("clears pictures and refuses an unknown colour or another team's player", async () => {
+    await setLogo(OWNER, null);
+    await setPhoto(OWNER, ali.id, null);
+    expect(await teamPage(lions.code)).toMatchObject({ team: { logoVersion: null } });
+    expect((await squadOf(lions.code)).find((p) => p.id === ali.id)).not.toHaveProperty("photoVersion");
+
+    await expectDbError(setColour(OWNER, "gold"), /check constraint/);
+    const eagle = { id: crypto.randomUUID(), name: "Eagle", role: null, active: true };
+    await upsertSquad(OTHER_OWNER, eagles.id, [eagle]);
+    await expectDbError(setPhoto(OWNER, eagle.id, 1), /not_team_owner/);
+  });
+
+  it("puts the brand on a live team match and nothing on a plain one", async () => {
+    await setPhoto(OWNER, ali.id, 4);
+    const teamMatch = newMatch();
+    expect(await push(OWNER, teamMatch, [1], link(lions, null, [ali.id, usman.id]))).toBe(1);
+    await call(OWNER, "set_potm", [teamMatch.code, usman.id]);
+
+    const live = await call<LiveTeam>("anon", "get_live_match", [teamMatch.code]);
+    expect(live.match.team).toEqual({
+      code: lions.code,
+      name: "Lions",
+      colour: "ocean",
+      logoVersion: null,
+      side: "A",
+      potmPlayerId: usman.id,
+      resultOverride: null,
+      xi: [ali.id, usman.id],
+      photos: { [ali.id]: 4 },
+    });
+
+    const plain = newMatch();
+    expect(await push(OWNER, plain, [1])).toBe(1);
+    expect((await call<LiveTeam>("anon", "get_live_match", [plain.code])).match.team).toBeNull();
+  });
+});
+
+describe("team media storage", () => {
+  function insert(actor: Actor, name: string) {
+    return rpc(actor, `insert into storage.objects (bucket_id, name) values ('team-media', $1)`, [name]);
+  }
+
+  it("lets only the owner write under their own team's folder", async () => {
+    await insert(OWNER, `teams/${lions.code}/logo-1.jpg`);
+    await insert(OWNER, `teams/${lions.code}/players/${ali.id}-1.jpg`);
+    await expectDbError(insert(OWNER, `teams/${eagles.code}/logo-1.jpg`), /row-level security/);
+    await expectDbError(insert(OWNER, `elsewhere/${lions.code}/logo-1.jpg`), /row-level security/);
+    await expectDbError(insert(SCORER, `teams/${lions.code}/players/x-1.jpg`), /row-level security/);
+    await expectDbError(insert(GUEST, `teams/${lions.code}/logo-2.jpg`), /row-level security/);
+    await expectDbError(insert("anon", `teams/${lions.code}/logo-3.jpg`), /row-level security|permission denied/);
+  });
+
+  it("makes the bucket public, JPEG only and at most 300 KB", async () => {
+    const [bucket] = await rows<{ public: boolean; file_size_limit: number | string; allowed_mime_types: string[] }>(
+      `select public, file_size_limit, allowed_mime_types from storage.buckets where id = 'team-media'`,
+    );
+    expect({ ...bucket, file_size_limit: Number(bucket.file_size_limit) }).toEqual({
+      public: true,
+      file_size_limit: 307200,
+      allowed_mime_types: ["image/jpeg"],
+    });
   });
 });
