@@ -335,3 +335,27 @@ test("a scorer can't edit the team", async ({ page }) => {
   await expect(page.getByText("You score for this team")).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
 });
+
+test("an edit sheet keeps its title while it closes", async ({ page }) => {
+  await signIn(page, team());
+  await page.goto("/team");
+  await page.getByRole("region", { name: "Squad" }).getByRole("button", { name: "Edit Raza" }).click();
+  const sheet = page.getByRole("dialog", { name: "Edit player" });
+  await expect(sheet).toBeVisible();
+  await sheet.getByRole("button", { name: "Cancel" }).click();
+  const titleWhileClosing = await page.evaluate(() => document.querySelector('[data-slot="drawer-title"]')?.textContent ?? null);
+  expect(titleWhileClosing).not.toBe("Add player");
+  await expect(sheet).toHaveCount(0);
+});
+
+test("tapping outside a half-filled sheet keeps it and what was typed", async ({ page }) => {
+  await signIn(page, team({ fixtures: [] }));
+  await page.goto("/team?section=fixtures");
+  await page.getByRole("region", { name: "Fixtures" }).getByRole("button", { name: "Add fixture" }).click();
+  const sheet = page.getByRole("dialog", { name: "Add fixture" });
+  await sheet.getByLabel("Opponent").fill("Hawks");
+  await page.mouse.click(20, 20);
+  await page.waitForTimeout(600);
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByLabel("Opponent")).toHaveValue("Hawks");
+});

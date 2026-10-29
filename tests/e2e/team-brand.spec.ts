@@ -124,3 +124,17 @@ test("a photo is removed from the Edit player sheet", async ({ page }) => {
   await expect.poll(() => photos).toEqual([{ p_player: ALI, p_version: null }]);
   await expect(page.getByRole("dialog", { name: "Edit player" })).toHaveCount(0);
 });
+
+test("a failed photo removal says so inside the Edit player sheet", async ({ page }) => {
+  const base = team();
+  await signIn(page, team({ squad: base.squad.map((player) => (player.id === ALI ? { ...player, photoVersion: 5 } : player)) }));
+  await stubStorage(page);
+  await stubRpc(page, "set_player_photo", 500);
+  await page.goto("/team");
+
+  await page.getByRole("region", { name: "Squad" }).getByRole("button", { name: "Edit Ali" }).click();
+  const sheet = page.getByRole("dialog", { name: "Edit player" });
+  await sheet.getByRole("button", { name: "Remove photo" }).click();
+
+  await expect(sheet.getByRole("alert")).toBeVisible();
+});

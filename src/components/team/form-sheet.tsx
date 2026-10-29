@@ -8,12 +8,12 @@ type FormSheetProps = { title: string; open: boolean; onClose: () => void; child
 
 export function FormSheet({ title, open, onClose, children }: FormSheetProps) {
   return (
-    <Drawer open={open} onOpenChange={(next) => !next && onClose()}>
+    <Drawer open={open} dismissible={false} onOpenChange={(next) => !next && onClose()}>
       <DrawerContent aria-describedby={undefined} className="mx-auto max-w-md">
         <DrawerHeader>
           <DrawerTitle className="text-xl font-bold">{title}</DrawerTitle>
         </DrawerHeader>
-        <div className="max-h-[75dvh] overflow-y-auto px-4 pb-6">{children}</div>
+        <div className="max-h-[75dvh] overflow-y-auto px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">{children}</div>
       </DrawerContent>
     </Drawer>
   );

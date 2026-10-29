@@ -159,7 +159,14 @@ function PlayerRow({ player, leading, onEdit }: { player: SquadPlayer; leading: 
 export function SquadEditor({ client, team, onChanged }: SquadEditorProps) {
   const headingId = useId();
   const [sheet, setSheet] = useState<Sheet>(null);
+  const [open, setOpen] = useState(false);
   const [photoError, setPhotoError] = useState<string | undefined>(undefined);
+  const show = (next: NonNullable<Sheet>) => {
+    setPhotoError(undefined);
+    setSheet(next);
+    setOpen(true);
+  };
+  const hide = () => setOpen(false);
   const canEdit = team.role === "owner";
   const colour = colourFor(team.colour, team.name);
 
@@ -185,7 +192,7 @@ export function SquadEditor({ client, team, onChanged }: SquadEditorProps) {
       return;
     }
     if (player.photoVersion !== undefined) await deleteTeamPicture(client, photoPath(team.code, player.id, player.photoVersion));
-    setSheet(null);
+    hide();
     await onChanged();
   }
 
@@ -211,7 +218,7 @@ export function SquadEditor({ client, team, onChanged }: SquadEditorProps) {
   async function save(player: SquadPlayer): Promise<string | undefined> {
     const result = await upsertSquadPlayers(client, team.id, [player]);
     if (!result.ok) return teamErrorMessage(result.error, t("squad.error.full"));
-    setSheet(null);
+    hide();
     await onChanged();
     return undefined;
   }
@@ -237,22 +244,27 @@ export function SquadEditor({ client, team, onChanged }: SquadEditorProps) {
               <PlayerRow
                 player={player}
                 leading={leadingFor(player)}
-                onEdit={canEdit ? () => setSheet({ kind: "edit", id: player.id }) : undefined}
+                onEdit={canEdit ? () => show({ kind: "edit", id: player.id }) : undefined}
               />
             </li>
           ))}
         </ul>
       )}
       {canAdd ? (
-        <FloatingAddButton label={t("team.squad.addButton")} onClick={() => setSheet({ kind: "add" })} />
+        <FloatingAddButton label={t("team.squad.addButton")} onClick={() => show({ kind: "add" })} />
       ) : (
         <p className="text-sm text-muted-foreground">{t("squad.error.full")}</p>
       )}
       <FormSheet
         title={t(sheet?.kind === "edit" ? "team.squad.editTitle" : "team.squad.addButton")}
-        open={sheet !== null}
-        onClose={() => setSheet(null)}
+        open={open}
+        onClose={hide}
       >
+        {photoError !== undefined && sheet?.kind === "edit" && (
+          <div className="pb-3">
+            <FormAlert message={photoError} />
+          </div>
+        )}
         {sheet?.kind === "add" && (
           <PlayerForm
             key="add"
@@ -260,7 +272,7 @@ export function SquadEditor({ client, team, onChanged }: SquadEditorProps) {
             submitLabel={t("team.squad.add")}
             existing={false}
             onSubmit={save}
-            onCancel={() => setSheet(null)}
+            onCancel={hide}
           />
         )}
         {editingPlayer !== undefined && (
@@ -270,7 +282,7 @@ export function SquadEditor({ client, team, onChanged }: SquadEditorProps) {
             submitLabel={t("common.save")}
             existing
             onSubmit={save}
-            onCancel={() => setSheet(null)}
+            onCancel={hide}
             onRemovePhoto={editingPlayer.photoVersion === undefined ? undefined : () => removePhoto(editingPlayer)}
           />
         )}

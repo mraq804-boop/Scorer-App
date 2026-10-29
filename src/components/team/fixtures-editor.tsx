@@ -240,6 +240,12 @@ function FixtureRow({ fixture, when, onEdit }: FixtureRowProps) {
 export function FixturesEditor({ client, team, onChanged }: FixturesEditorProps) {
   const headingId = useId();
   const [sheet, setSheet] = useState<{ kind: "add" } | { kind: "edit"; id: string } | null>(null);
+  const [open, setOpen] = useState(false);
+  const show = (next: { kind: "add" } | { kind: "edit"; id: string }) => {
+    setSheet(next);
+    setOpen(true);
+  };
+  const hide = () => setOpen(false);
   const canEdit = team.role === "owner";
   const format = useMemo(
     () =>
@@ -257,7 +263,7 @@ export function FixturesEditor({ client, team, onChanged }: FixturesEditorProps)
   async function save(fixture: FixtureInput): Promise<string | undefined> {
     const result = await upsertFixture(client, fixture);
     if (!result.ok) return teamErrorMessage(result.error, t("team.error.fixturesFull"));
-    setSheet(null);
+    hide();
     await onChanged();
     return undefined;
   }
@@ -281,17 +287,17 @@ export function FixturesEditor({ client, team, onChanged }: FixturesEditorProps)
               <FixtureRow
                 fixture={fixture}
                 when={format.format(new Date(fixture.startsAt))}
-                onEdit={canEdit ? () => setSheet({ kind: "edit", id: fixture.id }) : undefined}
+                onEdit={canEdit ? () => show({ kind: "edit", id: fixture.id }) : undefined}
               />
             </li>
           ))}
         </ul>
       )}
-      {canEdit && <FloatingAddButton label={t("team.fixtures.addButton")} onClick={() => setSheet({ kind: "add" })} />}
+      {canEdit && <FloatingAddButton label={t("team.fixtures.addButton")} onClick={() => show({ kind: "add" })} />}
       <FormSheet
         title={t(sheet?.kind === "edit" ? "team.fixtures.editTitle" : "team.fixtures.addButton")}
-        open={sheet !== null}
-        onClose={() => setSheet(null)}
+        open={open}
+        onClose={hide}
       >
         {sheet?.kind === "add" && (
           <FixtureForm
@@ -301,7 +307,7 @@ export function FixturesEditor({ client, team, onChanged }: FixturesEditorProps)
             timeZone={team.timeZone}
             submitLabel={t("team.fixtures.add")}
             onSubmit={save}
-            onCancel={() => setSheet(null)}
+            onCancel={hide}
           />
         )}
         {editingFixture !== undefined && (
@@ -312,7 +318,7 @@ export function FixturesEditor({ client, team, onChanged }: FixturesEditorProps)
             timeZone={team.timeZone}
             submitLabel={t("common.save")}
             onSubmit={save}
-            onCancel={() => setSheet(null)}
+            onCancel={hide}
           />
         )}
       </FormSheet>
