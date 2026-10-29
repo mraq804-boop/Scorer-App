@@ -7,6 +7,7 @@ import {
   acceptScorerInvite,
   createScorerInvite,
   createTeam,
+  deleteMatch,
   fetchScorers,
   fetchTeamPage,
   fetchMyTeam,
@@ -337,18 +338,20 @@ describe("team calls", () => {
     expect(rpc).toHaveBeenCalledWith("upsert_fixture", { p_fixture: fixture });
   });
 
-  it("setPotm and setResultOverride name the match by code", async () => {
+  it("setPotm, setResultOverride and deleteMatch name the match by code", async () => {
     const player = crypto.randomUUID();
     const { client, rpc } = clientWith(() => ok(null));
 
     expect(await setPotm(client, "abcd2345", player)).toEqual({ ok: true, value: undefined });
     expect(await setPotm(client, "abcd2345", null)).toEqual({ ok: true, value: undefined });
     expect(await setResultOverride(client, "abcd2345", true)).toEqual({ ok: true, value: undefined });
+    expect(await deleteMatch(client, "abcd2345")).toEqual({ ok: true, value: undefined });
 
     expect(rpc.mock.calls).toEqual([
       ["set_potm", { p_code: "abcd2345", p_player: player }],
       ["set_potm", { p_code: "abcd2345", p_player: null }],
       ["set_result_override", { p_code: "abcd2345", p_no_result: true }],
+      ["delete_match", { p_code: "abcd2345" }],
     ]);
   });
 
@@ -461,6 +464,7 @@ describe("team calls", () => {
     expect(await upsertFixture(client, { id: crypto.randomUUID(), startsAt: "2026-11-01T09:30:00.000Z", opponent: "Kites", ground: null, homeAway: null, overs: null, status: "scheduled", notes: null })).toEqual(failed);
     expect(await setPotm(client, "abcd2345", null)).toEqual(failed);
     expect(await setResultOverride(client, "abcd2345", false)).toEqual(failed);
+    expect(await deleteMatch(client, "abcd2345")).toEqual(failed);
     expect(await createScorerInvite(client)).toEqual(failed);
     expect(await acceptScorerInvite(client, "token")).toEqual(failed);
     expect(await removeScorer(client, "user-1")).toEqual(failed);

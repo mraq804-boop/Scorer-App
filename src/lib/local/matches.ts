@@ -74,6 +74,16 @@ export async function backfillWinners(db: LocalDb): Promise<number> {
   return updated;
 }
 
+export async function removeLocalMatch(db: LocalDb, code: string): Promise<boolean> {
+  return db.transaction("rw", db.matches, db.events, async () => {
+    const match = await db.matches.where("code").equals(code).first();
+    if (match === undefined) return false;
+    await db.events.where("matchId").equals(match.id).delete();
+    await db.matches.delete(match.id);
+    return true;
+  });
+}
+
 export async function appendEvents(
   db: LocalDb,
   matchId: string,

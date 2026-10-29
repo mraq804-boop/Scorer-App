@@ -211,6 +211,10 @@ export function setResultOverride(client: SupabaseClient, code: string, noResult
   return call(client, "set_result_override", { p_code: code, p_no_result: noResult }, readNothing);
 }
 
+export function deleteMatch(client: SupabaseClient, code: string): Promise<TeamResult<void>> {
+  return call(client, "delete_match", { p_code: code }, readNothing);
+}
+
 export function createScorerInvite(client: SupabaseClient): Promise<TeamResult<string>> {
   return call(client, "create_scorer_invite", undefined, readText);
 }

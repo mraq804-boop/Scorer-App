@@ -12,6 +12,7 @@ import {
   getDeviceId,
   loadEvents,
   recentPlayerNames,
+  removeLocalMatch,
 } from "@/lib/local/matches";
 import type { MatchSetup } from "@/lib/local/matches";
 import { summarize } from "@/lib/share/summary";
@@ -357,3 +358,30 @@ describe("backfillWinners", () => {
   });
 });
 
+
+describe("removeLocalMatch", () => {
+  it("deletes the match with that code and only its events", async () => {
+    const db = freshDb();
+    const gone = await createLocalMatch(db, setup());
+    const kept = await createLocalMatch(db, setup({ teams: ["Eagles", "Hawks"] }));
+    await appendEvents(db, gone.id, [await dotBall(db, gone.id)]);
+    const keptEvents = await loadEvents(db, kept.id);
+
+    expect(await removeLocalMatch(db, gone.code)).toBe(true);
+
+    expect(await db.matches.get(gone.id)).toBeUndefined();
+    expect(await db.events.where("matchId").equals(gone.id).count()).toBe(0);
+    expect((await db.matches.get(kept.id))?.code).toBe(kept.code);
+    expect(await loadEvents(db, kept.id)).toEqual(keptEvents);
+  });
+
+  it("is false when no match on this phone has that code", async () => {
+    const db = freshDb();
+    const kept = await createLocalMatch(db, setup());
+
+    expect(await removeLocalMatch(db, "zzzzzzzz")).toBe(false);
+
+    expect(await db.matches.count()).toBe(1);
+    expect((await db.matches.get(kept.id))?.code).toBe(kept.code);
+  });
+});
