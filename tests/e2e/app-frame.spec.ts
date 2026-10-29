@@ -144,3 +144,20 @@ test("Stats goes to your team once My team has loaded", async ({ page }) => {
   await expect(page.getByRole("region", { name: "Squad" })).toBeVisible();
   await expect(tabs(page).getByRole("link", { name: "Stats" })).toHaveAttribute("href", "/t/abcd2345");
 });
+
+test("switching My team sections doesn't wait on the server", async ({ page }) => {
+  await signInOwner(page);
+  await page.goto("/team");
+  await expect(page.getByRole("region", { name: "Squad" })).toBeVisible();
+  const serverFetches: string[] = [];
+  page.on("request", (request) => {
+    if (request.headers()["rsc"] === "1") serverFetches.push(request.url());
+  });
+  await page.getByRole("tab", { name: "Settings" }).click();
+  await expect(page.getByRole("region", { name: "Seasons" })).toBeVisible();
+  await page.getByRole("tab", { name: "Fixtures" }).click();
+  await expect(page.getByRole("region", { name: "Fixtures" })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("region", { name: "Seasons" })).toBeVisible();
+  expect(serverFetches).toEqual([]);
+});

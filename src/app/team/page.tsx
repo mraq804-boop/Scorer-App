@@ -2,7 +2,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Pencil } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AppBar } from "@/components/app/app-bar";
@@ -142,10 +142,11 @@ function Loading() {
 }
 
 function TeamSections({ client, team, onChanged }: { client: SupabaseClient; team: CachedTeam; onChanged: () => Promise<void> }) {
-  const router = useRouter();
   const section = sectionFromQuery(useSearchParams().get("section"), team.role);
   const owner = team.role === "owner";
-  const select = (next: TeamSection) => router.push(`/team?section=${next}`, { scroll: false });
+  const select = (next: TeamSection) => {
+    if (next !== section) window.history.pushState(null, "", `/team?section=${next}`);
+  };
   return (
     <>
       <TeamSummary team={team} />

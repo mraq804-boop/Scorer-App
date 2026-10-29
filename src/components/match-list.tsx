@@ -52,9 +52,8 @@ function SyncStatus({ match }: { match: LocalMatch }) {
   );
 }
 
-function MatchItem({ match }: { match: LocalMatch }) {
+function MatchItem({ match, live }: { match: LocalMatch; live: boolean }) {
   const pill = teamPill(match);
-  const live = matchSection(match) === "live";
   return (
     <li>
       <a
@@ -93,7 +92,7 @@ function MatchItem({ match }: { match: LocalMatch }) {
   );
 }
 
-function MatchSection({ id, title, matches }: { id: string; title: string; matches: LocalMatch[] }) {
+function MatchSection({ id, title, matches, live }: { id: string; title: string; matches: LocalMatch[]; live: boolean }) {
   return (
     <section aria-labelledby={id} className="flex flex-col gap-3">
       <h2 id={id} className="text-sm font-bold tracking-wide text-muted-foreground uppercase">
@@ -101,7 +100,7 @@ function MatchSection({ id, title, matches }: { id: string; title: string; match
       </h2>
       <ul className="flex flex-col gap-3">
         {matches.map((match) => (
-          <MatchItem key={match.id} match={match} />
+          <MatchItem key={match.id} match={match} live={live} />
         ))}
       </ul>
     </section>
@@ -126,16 +125,17 @@ function EmptyState() {
 
 export function MatchList() {
   const matches = useLiveQuery(loadMatches);
+  const [now] = useState(() => Date.now());
   const unavailable = useStorageUnavailable();
   if (unavailable || matches === null) return <StorageError />;
   if (matches === undefined) return null;
   if (matches.length === 0) return <EmptyState />;
-  const live = matches.filter((match) => matchSection(match) === "live");
-  const recent = matches.filter((match) => matchSection(match) === "recent");
+  const live = matches.filter((match) => matchSection(match, now) === "live");
+  const recent = matches.filter((match) => matchSection(match, now) === "recent");
   return (
     <>
-      {live.length > 0 && <MatchSection id="home-live" title={t("home.live")} matches={live} />}
-      {recent.length > 0 && <MatchSection id="home-recent" title={t("home.recent")} matches={recent} />}
+      {live.length > 0 && <MatchSection id="home-live" title={t("home.live")} matches={live} live />}
+      {recent.length > 0 && <MatchSection id="home-recent" title={t("home.recent")} matches={recent} live={false} />}
     </>
   );
 }
