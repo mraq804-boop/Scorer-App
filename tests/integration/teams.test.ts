@@ -878,6 +878,11 @@ describe("delete_match", () => {
     return rows(`select status, match_id from public.fixtures where id = $1`, [id]);
   }
 
+  async function broadcasts(matchId: string) {
+    const [row] = await rows<{ n: number }>(`select count(*)::int as n from realtime.messages where topic = $1`, [`match:${matchId}`]);
+    return row.n;
+  }
+
   it("hides the owner's team match everywhere and frees its fixture", async () => {
     const fixtureId = await upsertFixture(OWNER, fixture(-3, { opponent: "Hawks" }));
     const match = newMatch();
@@ -934,13 +939,31 @@ describe("delete_match", () => {
     const fixtureId = await upsertFixture(OWNER, fixture(-5, { opponent: "Kites" }));
     const match = newMatch();
     await push(SCORER, match, [1], link(lions, fixtureId));
+    expect(await broadcasts(match.id)).toBe(1);
     await call(OWNER, "delete_match", [match.code]);
 
     expect(await push(SCORER, match, [2, 3], link(lions, fixtureId))).toBe(3);
+
+    expect(await broadcasts(match.id)).toBe(1);
 
     expect(await visibility(match.id)).toBe("private");
     expect(await matchRow(match.id)).toMatchObject({ team_id: lions.id, fixture_id: null, last_seq: 3 });
     expect(await fixtureRow(fixtureId)).toEqual([{ status: "scheduled", match_id: null }]);
     expect(await pageCodes()).not.toContain(match.code);
+  });
+
+  it("keeps a fixture played on the other match when one of two matches against it is deleted", async () => {
+    const fixtureId = await upsertFixture(OWNER, fixture(-6, { opponent: "Ravens" }));
+    const real = newMatch();
+    const mistake = newMatch();
+    await push(SCORER, real, [1], link(lions, fixtureId));
+    await push(SCORER, mistake, [1], link(lions, fixtureId));
+    expect(await fixtureRow(fixtureId)).toEqual([{ status: "played", match_id: mistake.id }]);
+
+    await call(OWNER, "delete_match", [mistake.code]);
+
+    expect(await fixtureRow(fixtureId)).toEqual([{ status: "played", match_id: real.id }]);
+    const fixtures = (await teamPage(lions.code))?.fixtures as { id: string; matchCode: string | null }[];
+    expect(fixtures.find((f) => f.id === fixtureId)?.matchCode).toBe(real.code);
   });
 });

@@ -11,8 +11,29 @@ begin
   if not found then
     raise exception 'not_team_owner';
   end if;
-  update public.fixtures f set match_id = null, status = case when f.status = 'played' then 'scheduled' else f.status end
-  where f.match_id = mid and f.team_id = tid;
+  update public.fixtures f
+  set match_id = x.next_id,
+      status = case when x.next_id is null and f.status = 'played' then 'scheduled' else f.status end
+  from (
+    select f2.id, (
+      select m.id from public.matches m
+      where m.fixture_id = f2.id and m.team_id = tid and m.visibility = 'link'
+      order by m.updated_at desc, m.id
+      limit 1
+    ) as next_id
+    from public.fixtures f2
+    where f2.match_id = mid and f2.team_id = tid
+  ) x
+  where f.id = x.id;
+end $$;
+
+create or replace function public.broadcast_match_event() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if exists (select 1 from public.matches m where m.id = new.match_id and m.visibility = 'link') then
+    perform realtime.send(public.match_event_json(new), 'event', 'match:' || new.match_id::text, true);
+  end if;
+  return null;
 end $$;
 
 create or replace function public.push_match_events(p_match jsonb, p_device uuid, p_events jsonb) returns int
