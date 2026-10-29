@@ -124,9 +124,9 @@ function Status({ state, outcome }: { state: MatchState; outcome: PosterOutcome 
   );
 }
 
-type LiveHeroProps = { state: MatchState; team: LiveTeam | null; title?: string };
+type LiveHeroProps = { state: MatchState; team: LiveTeam | null };
 
-export function LiveHero({ state, team, title = state.title }: LiveHeroProps) {
+export function LiveHero({ state, team }: LiveHeroProps) {
   const outcome = posterOutcome(state, team?.resultOverride ?? null);
   const winner = outcome.kind === "won" && (team === null || team.side === outcome.winner) ? outcome.winner : null;
   const winnerBase = winner === null ? null : sideColour(state, winner, team).light;
@@ -150,10 +150,7 @@ export function LiveHero({ state, team, title = state.title }: LiveHeroProps) {
           style={{ position: "absolute", bottom: 0, left: 0, width: "100%", opacity: 0.25 }}
         />
       </div>
-      <div className="relative flex min-h-11 items-center justify-between gap-3 px-4 py-2">
-        <h1 className="min-w-0 truncate text-sm font-bold">
-          <bdi>{title}</bdi>
-        </h1>
+      <div className="relative flex min-h-11 items-center justify-end gap-3 px-4 py-2">
         <Status state={state} outcome={outcome} />
       </div>
       {outcome.kind === "live" && <Crease state={state} team={team} />}

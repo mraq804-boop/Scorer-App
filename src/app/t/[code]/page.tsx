@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { cache } from "react";
+import { AppBar } from "@/components/app/app-bar";
+import { RememberTeam } from "@/components/app/remember-team";
+import { ShareLinkButton } from "@/components/app/share-link-button";
 import { Copyright } from "@/components/copyright";
+import { InstallIcon } from "@/components/pwa/install-app";
 import { SeasonLinks } from "@/components/team-page/season-links";
 import { ShareTeam } from "@/components/team-page/share-team";
 import { TeamHero } from "@/components/team-page/team-hero";
@@ -41,15 +45,28 @@ export default async function TeamPublicPage({ params, searchParams }: PageProps
   const photoOf = (playerId: string) => photoUrl(page.team.code, playerId, photos.get(playerId));
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-6 px-4 pt-6 pb-10">
-      <TeamHero page={page} record={stats.record} form={teamForm(matches)} />
-      <SeasonLinks basePath={`/t/${page.team.code}`} seasons={page.seasons} selected={seasonId} />
-      <NextFixtures fixtures={page.fixtures} timeZone={page.team.timeZone} now={now} />
-      <RecentResults matches={matches} timeZone={page.team.timeZone} />
-      <Milestones stats={stats} names={names} playerHref={playerHref} colour={colour} photoOf={photoOf} />
-      <Leaderboards stats={stats} names={names} playerHref={playerHref} colour={colour} photoOf={photoOf} />
-      <ShareTeam text={t("team.link.shareText", { name: page.team.name, url })} />
-      <Copyright />
-    </main>
+    <>
+      <AppBar
+        title={page.team.name}
+        back="/"
+        actions={
+          <>
+            <InstallIcon />
+            <ShareLinkButton url={url} title={page.team.name} />
+          </>
+        }
+      />
+      <main className="app-screen mx-auto flex w-full max-w-md flex-col gap-6 px-4 pt-6 pb-10">
+        <RememberTeam code={page.team.code} />
+        <TeamHero page={page} record={stats.record} form={teamForm(matches)} />
+        <SeasonLinks basePath={`/t/${page.team.code}`} seasons={page.seasons} selected={seasonId} />
+        <NextFixtures fixtures={page.fixtures} timeZone={page.team.timeZone} now={now} />
+        <RecentResults matches={matches} timeZone={page.team.timeZone} />
+        <Milestones stats={stats} names={names} playerHref={playerHref} colour={colour} photoOf={photoOf} />
+        <Leaderboards stats={stats} names={names} playerHref={playerHref} colour={colour} photoOf={photoOf} />
+        <ShareTeam text={t("team.link.shareText", { name: page.team.name, url })} />
+        <Copyright />
+      </main>
+    </>
   );
 }

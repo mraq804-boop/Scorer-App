@@ -26,6 +26,15 @@ test.describe("with a backend", () => {
     "needs a Supabase project and a team: set E2E_BACKEND=1 and E2E_TEAM_CODE",
   );
 
+  test("the team page shows the app frame", async ({ page }) => {
+    const code = process.env.E2E_TEAM_CODE ?? "";
+    await page.goto(`/t/${code}`);
+    const tabs = page.getByRole("navigation", { name: "Tabs" });
+    await expect(tabs).toBeVisible();
+    await expect(tabs.getByRole("link", { name: "Stats" })).toHaveAttribute("aria-current", "page");
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("cricket-scorer:last-team"))).toBe(code);
+  });
+
   test("the team page holds still when the phone asks for reduced motion", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto(`/t/${process.env.E2E_TEAM_CODE}?season=all`);

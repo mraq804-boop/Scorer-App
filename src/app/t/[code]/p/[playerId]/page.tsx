@@ -1,12 +1,16 @@
-import { ChevronLeft } from "lucide-react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { cache } from "react";
+import { AppBar } from "@/components/app/app-bar";
+import { RememberTeam } from "@/components/app/remember-team";
+import { ShareLinkButton } from "@/components/app/share-link-button";
 import { Copyright } from "@/components/copyright";
+import { InstallIcon } from "@/components/pwa/install-app";
 import { PlayerHero, PlayerMatches, PlayerTotalsView } from "@/components/team-page/player-sections";
 import { colourFor, photoUrl } from "@/lib/brand";
 import { SeasonLinks } from "@/components/team-page/season-links";
 import { t } from "@/lib/i18n";
+import { teamUrl } from "@/lib/site-url";
 import { getTeamPage, matchesInSeason, seasonQuery, selectedSeason, teamStats } from "@/server/team";
 
 export const dynamic = "force-dynamic";
@@ -33,31 +37,38 @@ export default async function PlayerPage({ params, searchParams }: PageProps<"/t
   const stats = teamStats(page, seasonId);
   const totals = stats.players.find((candidate) => candidate.playerId === player.id);
   if (totals === undefined) notFound();
+  const playerUrl = `${teamUrl(page.team.code)}/p/${player.id}`;
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-6 px-4 pt-4 pb-10">
-      <a
-        href={`/t/${page.team.code}${seasonQuery(seasonId)}`}
-        className="-ms-2 flex min-h-11 min-w-0 items-center gap-1 self-start rounded-full pe-3 text-sm font-semibold text-muted-foreground hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-      >
-        <ChevronLeft className="size-5 shrink-0 rtl:rotate-180" aria-hidden />
-        <bdi className="truncate">{t("teamPage.back", { name: page.team.name })}</bdi>
-      </a>
-      <PlayerHero
-        player={player}
-        totals={totals}
-        colour={colourFor(page.team.colour, page.team.name)}
-        photoUrl={photoUrl(page.team.code, player.id, player.photoVersion)}
+    <>
+      <AppBar
+        title={player.name}
+        back={`/t/${page.team.code}${seasonQuery(seasonId)}`}
+        actions={
+          <>
+            <InstallIcon />
+            <ShareLinkButton url={playerUrl} title={player.name} />
+          </>
+        }
       />
-      <SeasonLinks basePath={`/t/${page.team.code}/p/${player.id}`} seasons={page.seasons} selected={seasonId} />
-      <PlayerTotalsView totals={totals} />
-      <PlayerMatches
-        matches={matchesInSeason(page, seasonId)}
-        playerId={player.id}
-        potm={stats.potm}
-        timeZone={page.team.timeZone}
-      />
-      <Copyright />
-    </main>
+      <main className="app-screen mx-auto flex w-full max-w-md flex-col gap-6 px-4 pb-10">
+        <RememberTeam code={page.team.code} />
+        <PlayerHero
+          player={player}
+          totals={totals}
+          colour={colourFor(page.team.colour, page.team.name)}
+          photoUrl={photoUrl(page.team.code, player.id, player.photoVersion)}
+        />
+        <SeasonLinks basePath={`/t/${page.team.code}/p/${player.id}`} seasons={page.seasons} selected={seasonId} />
+        <PlayerTotalsView totals={totals} />
+        <PlayerMatches
+          matches={matchesInSeason(page, seasonId)}
+          playerId={player.id}
+          potm={stats.potm}
+          timeZone={page.team.timeZone}
+        />
+        <Copyright />
+      </main>
+    </>
   );
 }

@@ -106,3 +106,13 @@ describe("burstFor", () => {
     expect(burstFor(dot, item({ eventId: "e2", runs: 1 }))).toBeNull();
   });
 });
+
+describe("LiveHero in the app frame", () => {
+  it("the hero leaves the title to the top bar", () => {
+    const m = new TestMatch();
+    m.ball({ runs: 4, boundary: true });
+    const html = renderToStaticMarkup(createElement(LiveHero, { state: m.state, team: null }));
+    expect(html).not.toContain("<h1");
+    expect(html).toContain("LIVE");
+  });
+});

@@ -79,7 +79,7 @@ export function LiveView({ match, initialEvents }: LiveViewProps) {
 
   return (
     <div className="flex flex-1 flex-col gap-4 pb-4">
-      <LiveHero state={state} team={team} title={match.title} />
+      <LiveHero state={state} team={team} />
       <div role="tablist" className="flex gap-1 rounded-xl bg-muted p-1">
         {TABS.map((item) => (
           <button

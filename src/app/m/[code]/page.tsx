@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { cache } from "react";
+import { AppBar } from "@/components/app/app-bar";
+import { ShareLinkButton } from "@/components/app/share-link-button";
 import { Copyright } from "@/components/copyright";
 import { LiveView } from "@/components/live/live-view";
+import { InstallIcon } from "@/components/pwa/install-app";
 import { formatScoreLine } from "@/lib/i18n/cricket";
 import { CODE_RE } from "@/lib/local/code";
 import { currentInnings, replay } from "@/lib/scoring";
+import { matchUrl } from "@/lib/site-url";
 import { getLiveMatch } from "@/server/live";
 
 export const dynamic = "force-dynamic";
@@ -24,9 +28,22 @@ export default async function LivePage({ params }: PageProps<"/m/[code]">) {
   const live = await loadMatch((await params).code);
   if (live === null) notFound();
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pt-2 pb-safe">
-      <LiveView key={live.match.id} match={live.match} initialEvents={live.events} />
-      <Copyright />
-    </main>
+    <>
+      <AppBar
+        title={live.match.title}
+        heading
+        back="/"
+        actions={
+          <>
+            <InstallIcon />
+            <ShareLinkButton url={matchUrl(live.match.code)} title={live.match.title} />
+          </>
+        }
+      />
+      <main className="app-screen mx-auto flex w-full max-w-md flex-col px-4 pb-safe">
+        <LiveView key={live.match.id} match={live.match} initialEvents={live.events} />
+        <Copyright />
+      </main>
+    </>
   );
 }
