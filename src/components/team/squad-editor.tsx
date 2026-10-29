@@ -17,6 +17,7 @@ import { SQUAD_MAX_PLAYERS } from "@/lib/team/local";
 import { deleteTeamPicture, replaceTeamPicture, setPlayerPhoto, upsertSquadPlayers } from "@/lib/team/remote";
 import { validatePlayer } from "@/lib/validation/team";
 import { FormAlert, ROLES, ROLE_LABELS, SelectField, TextField, teamErrorMessage } from "./form";
+import { FloatingAddButton, FormSheet } from "./form-sheet";
 import { PictureInput } from "./picture-input";
 
 type SquadEditorProps = {
@@ -24,6 +25,8 @@ type SquadEditorProps = {
   team: CachedTeam;
   onChanged: () => Promise<void>;
 };
+
+type Sheet = { kind: "add" } | { kind: "edit"; id: string } | null;
 
 type PlayerFormProps = {
   initial: SquadPlayer;
@@ -155,7 +158,7 @@ function PlayerRow({ player, leading, onEdit }: { player: SquadPlayer; leading: 
 
 export function SquadEditor({ client, team, onChanged }: SquadEditorProps) {
   const headingId = useId();
-  const [editing, setEditing] = useState<string | null>(null);
+  const [sheet, setSheet] = useState<Sheet>(null);
   const [photoError, setPhotoError] = useState<string | undefined>(undefined);
   const canEdit = team.role === "owner";
   const colour = colourFor(team.colour, team.name);
@@ -182,7 +185,7 @@ export function SquadEditor({ client, team, onChanged }: SquadEditorProps) {
       return;
     }
     if (player.photoVersion !== undefined) await deleteTeamPicture(client, photoPath(team.code, player.id, player.photoVersion));
-    setEditing(null);
+    setSheet(null);
     await onChanged();
   }
 
@@ -208,13 +211,16 @@ export function SquadEditor({ client, team, onChanged }: SquadEditorProps) {
   async function save(player: SquadPlayer): Promise<string | undefined> {
     const result = await upsertSquadPlayers(client, team.id, [player]);
     if (!result.ok) return teamErrorMessage(result.error, t("squad.error.full"));
-    setEditing(null);
+    setSheet(null);
     await onChanged();
     return undefined;
   }
 
+  const editingPlayer = sheet?.kind === "edit" ? team.squad.find((player) => player.id === sheet.id) : undefined;
+  const canAdd = team.squad.length < SQUAD_MAX_PLAYERS;
+
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-3">
+    <section aria-labelledby={headingId} className="flex flex-col gap-3 pb-16">
       <div className="flex items-baseline justify-between gap-3">
         <h2 id={headingId} className="text-lg font-bold">
           {t("team.squad.title")}
@@ -228,31 +234,47 @@ export function SquadEditor({ client, team, onChanged }: SquadEditorProps) {
         <ul className="flex flex-col gap-1.5">
           {team.squad.map((player) => (
             <li key={player.id}>
-              {editing === player.id ? (
-                <PlayerForm
-                  initial={player}
-                  submitLabel={t("common.save")}
-                  existing
-                  onSubmit={save}
-                  onCancel={() => setEditing(null)}
-                  onRemovePhoto={player.photoVersion === undefined ? undefined : () => removePhoto(player)}
-                />
-              ) : (
-                <PlayerRow
-                  player={player}
-                  leading={leadingFor(player)}
-                  onEdit={canEdit ? () => setEditing(player.id) : undefined}
-                />
-              )}
+              <PlayerRow
+                player={player}
+                leading={leadingFor(player)}
+                onEdit={canEdit ? () => setSheet({ kind: "edit", id: player.id }) : undefined}
+              />
             </li>
           ))}
         </ul>
       )}
-      {team.squad.length < SQUAD_MAX_PLAYERS ? (
-        <PlayerForm initial={blankPlayer()} submitLabel={t("team.squad.add")} existing={false} onSubmit={save} />
+      {canAdd ? (
+        <FloatingAddButton label={t("team.squad.addButton")} onClick={() => setSheet({ kind: "add" })} />
       ) : (
         <p className="text-sm text-muted-foreground">{t("squad.error.full")}</p>
       )}
+      <FormSheet
+        title={t(sheet?.kind === "edit" ? "team.squad.editTitle" : "team.squad.addButton")}
+        open={sheet !== null}
+        onClose={() => setSheet(null)}
+      >
+        {sheet?.kind === "add" && (
+          <PlayerForm
+            key="add"
+            initial={blankPlayer()}
+            submitLabel={t("team.squad.add")}
+            existing={false}
+            onSubmit={save}
+            onCancel={() => setSheet(null)}
+          />
+        )}
+        {editingPlayer !== undefined && (
+          <PlayerForm
+            key={editingPlayer.id}
+            initial={editingPlayer}
+            submitLabel={t("common.save")}
+            existing
+            onSubmit={save}
+            onCancel={() => setSheet(null)}
+            onRemovePhoto={editingPlayer.photoVersion === undefined ? undefined : () => removePhoto(editingPlayer)}
+          />
+        )}
+      </FormSheet>
     </section>
   );
 }

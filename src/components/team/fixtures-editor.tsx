@@ -12,6 +12,7 @@ import type { FixtureInput } from "@/lib/team/remote";
 import { validateFixture, zonedParts } from "@/lib/validation/team";
 import type { FixtureField, FixtureForm as FixtureValues } from "@/lib/validation/team";
 import { FormAlert, SelectField, TextField, teamErrorMessage } from "./form";
+import { FloatingAddButton, FormSheet } from "./form-sheet";
 
 type FixturesEditorProps = { client: SupabaseClient; team: CachedTeam; onChanged: () => Promise<void> };
 
@@ -238,7 +239,7 @@ function FixtureRow({ fixture, when, onEdit }: FixtureRowProps) {
 
 export function FixturesEditor({ client, team, onChanged }: FixturesEditorProps) {
   const headingId = useId();
-  const [editing, setEditing] = useState<string | null>(null);
+  const [sheet, setSheet] = useState<{ kind: "add" } | { kind: "edit"; id: string } | null>(null);
   const canEdit = team.role === "owner";
   const format = useMemo(
     () =>
@@ -256,13 +257,15 @@ export function FixturesEditor({ client, team, onChanged }: FixturesEditorProps)
   async function save(fixture: FixtureInput): Promise<string | undefined> {
     const result = await upsertFixture(client, fixture);
     if (!result.ok) return teamErrorMessage(result.error, t("team.error.fixturesFull"));
-    setEditing(null);
+    setSheet(null);
     await onChanged();
     return undefined;
   }
 
+  const editingFixture = sheet?.kind === "edit" ? team.fixtures.find((fixture) => fixture.id === sheet.id) : undefined;
+
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-3">
+    <section aria-labelledby={headingId} className={canEdit ? "flex flex-col gap-3 pb-16" : "flex flex-col gap-3"}>
       <div className="flex flex-col gap-0.5">
         <h2 id={headingId} className="text-lg font-bold">
           {t("team.fixtures.title")}
@@ -275,35 +278,44 @@ export function FixturesEditor({ client, team, onChanged }: FixturesEditorProps)
         <ul className="flex flex-col gap-1.5">
           {team.fixtures.map((fixture) => (
             <li key={fixture.id}>
-              {editing === fixture.id ? (
-                <FixtureForm
-                  initial={formValues(fixture, team.timeZone)}
-                  existing
-                  timeZone={team.timeZone}
-                  submitLabel={t("common.save")}
-                  onSubmit={save}
-                  onCancel={() => setEditing(null)}
-                />
-              ) : (
-                <FixtureRow
-                  fixture={fixture}
-                  when={format.format(new Date(fixture.startsAt))}
-                  onEdit={canEdit ? () => setEditing(fixture.id) : undefined}
-                />
-              )}
+              <FixtureRow
+                fixture={fixture}
+                when={format.format(new Date(fixture.startsAt))}
+                onEdit={canEdit ? () => setSheet({ kind: "edit", id: fixture.id }) : undefined}
+              />
             </li>
           ))}
         </ul>
       )}
-      {canEdit && (
-        <FixtureForm
-          initial={blankFixture()}
-          existing={false}
-          timeZone={team.timeZone}
-          submitLabel={t("team.fixtures.add")}
-          onSubmit={save}
-        />
-      )}
+      {canEdit && <FloatingAddButton label={t("team.fixtures.addButton")} onClick={() => setSheet({ kind: "add" })} />}
+      <FormSheet
+        title={t(sheet?.kind === "edit" ? "team.fixtures.editTitle" : "team.fixtures.addButton")}
+        open={sheet !== null}
+        onClose={() => setSheet(null)}
+      >
+        {sheet?.kind === "add" && (
+          <FixtureForm
+            key="add"
+            initial={blankFixture()}
+            existing={false}
+            timeZone={team.timeZone}
+            submitLabel={t("team.fixtures.add")}
+            onSubmit={save}
+            onCancel={() => setSheet(null)}
+          />
+        )}
+        {editingFixture !== undefined && (
+          <FixtureForm
+            key={editingFixture.id}
+            initial={formValues(editingFixture, team.timeZone)}
+            existing
+            timeZone={team.timeZone}
+            submitLabel={t("common.save")}
+            onSubmit={save}
+            onCancel={() => setSheet(null)}
+          />
+        )}
+      </FormSheet>
     </section>
   );
 }

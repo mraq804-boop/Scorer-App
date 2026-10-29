@@ -127,15 +127,27 @@ test("an owner adds a player and the team is fetched again", async ({ page }) =>
   calls.myTeam = 0;
 
   const upsert = page.waitForRequest((request) => request.url().endsWith("/rpc/upsert_squad_players"));
-  await squad.getByLabel("New player's name").fill("  Zain ");
-  await squad.getByLabel("Role").selectOption("Wicketkeeper");
   await squad.getByRole("button", { name: "Add player" }).click();
+  const sheet = page.getByRole("dialog", { name: "Add player" });
+  await sheet.getByLabel("New player's name").fill("  Zain ");
+  await sheet.getByLabel("Role").selectOption("Wicketkeeper");
+  await sheet.getByRole("button", { name: "Add player" }).click();
 
   const body = (await upsert).postDataJSON() as { p_team: string; p_players: SquadPlayer[] };
   expect(body.p_team).toBe(TEAM_ID);
   expect(body.p_players).toEqual([{ id: expect.any(String), name: "Zain", role: "keeper", active: true }]);
   await expect.poll(() => calls.myTeam).toBe(1);
-  await expect(squad.getByLabel("New player's name")).toHaveValue("");
+  await expect(sheet).toHaveCount(0);
+});
+
+test("editing a player opens a sheet with their details", async ({ page }) => {
+  await signIn(page, team());
+  await page.goto("/team");
+  await page.getByRole("region", { name: "Squad" }).getByRole("button", { name: "Edit Raza" }).click();
+  const sheet = page.getByRole("dialog", { name: "Edit player" });
+  await expect(sheet.getByLabel("Player name")).toHaveValue("Raza");
+  await sheet.getByRole("button", { name: "Cancel" }).click();
+  await expect(sheet).toHaveCount(0);
 });
 
 test("an owner can't add a season that ends before it starts", async ({ page }) => {
@@ -198,13 +210,16 @@ test("an owner adds a fixture in the team's time zone", async ({ page }) => {
   await page.goto("/team?section=fixtures");
   const fixtures = page.getByRole("region", { name: "Fixtures" });
 
-  await fixtures.getByLabel("Date").fill("2026-11-08");
-  await fixtures.getByLabel("Time").fill("14:30");
-  await fixtures.getByLabel("Opponent").fill(" Hawks ");
-  await fixtures.getByLabel("Overs (optional)").fill("20");
   await fixtures.getByRole("button", { name: "Add fixture" }).click();
+  const sheet = page.getByRole("dialog", { name: "Add fixture" });
+  await sheet.getByLabel("Date").fill("2026-11-08");
+  await sheet.getByLabel("Time").fill("14:30");
+  await sheet.getByLabel("Opponent").fill(" Hawks ");
+  await sheet.getByLabel("Overs (optional)").fill("20");
+  await sheet.getByRole("button", { name: "Add fixture" }).click();
 
   await expect.poll(() => saved.length).toBe(1);
+  await expect(sheet).toHaveCount(0);
   expect(saved[0]).toEqual({
     p_fixture: {
       id: expect.any(String),

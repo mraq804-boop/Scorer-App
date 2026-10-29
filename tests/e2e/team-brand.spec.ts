@@ -110,3 +110,17 @@ test("a photo that won't load shows the player's initials instead of a broken im
   await expect(squad.locator(`img[src*="players/${ALI}-5.jpg"]`)).toHaveCount(0);
   await expect(squad.getByText("A", { exact: true })).toBeVisible();
 });
+
+test("a photo is removed from the Edit player sheet", async ({ page }) => {
+  const base = team();
+  await signIn(page, team({ squad: base.squad.map((player) => (player.id === ALI ? { ...player, photoVersion: 5 } : player)) }));
+  await stubStorage(page);
+  const photos = await stubRpc(page, "set_player_photo");
+  await page.goto("/team");
+
+  await page.getByRole("region", { name: "Squad" }).getByRole("button", { name: "Edit Ali" }).click();
+  await page.getByRole("dialog", { name: "Edit player" }).getByRole("button", { name: "Remove photo" }).click();
+
+  await expect.poll(() => photos).toEqual([{ p_player: ALI, p_version: null }]);
+  await expect(page.getByRole("dialog", { name: "Edit player" })).toHaveCount(0);
+});
