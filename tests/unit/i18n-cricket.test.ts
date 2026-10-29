@@ -157,6 +157,7 @@ describe("summarize", () => {
       status: "in_progress",
       lines: ["Lions 1/0 (0.1 ov)"],
       result: null,
+      winner: null,
     });
   });
 
@@ -175,7 +176,26 @@ describe("summarize", () => {
       status: "complete",
       lines: ["Lions 1/0 (0.1 ov)", "Tigers 6/0 (0.1 ov)"],
       result: "Tigers won by 10 wickets (59 balls left)",
+      winner: "B",
     });
+  });
+
+  it("summary names the winner side or a tie", () => {
+    const tied = new TestMatch({ overs: 1 });
+    tied.ball({ runs: 1 });
+    tied.endInnings("overs");
+    tied.startInnings2(["Zain", "Faisal"], "Usman");
+    tied.ball({ runs: 1 });
+    tied.endInnings("overs");
+    expect(summarize(tied.state)).toMatchObject({ status: "complete", winner: "tie" });
+
+    const won = new TestMatch({ overs: 1 });
+    won.ball({ runs: 4, boundary: true });
+    won.endInnings("overs");
+    won.startInnings2(["Zain", "Faisal"], "Usman");
+    won.ball({ runs: 1 });
+    won.endInnings("overs");
+    expect(summarize(won.state)).toMatchObject({ status: "complete", winner: "A" });
   });
 
   it("has no lines before an innings starts", () => {

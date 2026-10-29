@@ -1,5 +1,5 @@
 import { formatResult, formatScoreLine } from "@/lib/i18n/cricket";
-import type { MatchState } from "@/lib/scoring";
+import type { MatchState, TeamSide } from "@/lib/scoring";
 
 export type MatchSummary = {
   title: string;
@@ -7,6 +7,7 @@ export type MatchSummary = {
   status: MatchState["status"];
   lines: string[];
   result: string | null;
+  winner?: TeamSide | "tie" | null;
 };
 
 export function summarize(state: MatchState): MatchSummary {
@@ -16,5 +17,6 @@ export function summarize(state: MatchState): MatchSummary {
     status: state.status,
     lines: state.innings.map((innings) => formatScoreLine(innings, state)),
     result: state.result === null ? null : formatResult(state.result, state.teams),
+    winner: state.result === null ? null : state.result.kind === "tie" ? "tie" : state.result.winner,
   };
 }

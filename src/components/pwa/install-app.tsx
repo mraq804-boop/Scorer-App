@@ -200,21 +200,3 @@ export function InstallIcon() {
     </>
   );
 }
-
-export function InstallApp() {
-  const { available, install, stepsOpen, setStepsOpen } = useInstallPrompt();
-  if (!available) return null;
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => void install()}
-        className="flex h-11 items-center justify-center gap-2 rounded-xl border border-haldi/50 px-4 text-sm font-semibold text-foreground"
-      >
-        <Download className="size-4" aria-hidden />
-        {t("pwa.install")}
-      </button>
-      <IosSteps open={stepsOpen} onOpenChange={setStepsOpen} />
-    </>
-  );
-}

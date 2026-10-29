@@ -30,9 +30,10 @@ function fitsViewport(page: Page) {
 
 test("home offers a new match and an empty list", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("link", { name: "New match" })).toHaveAttribute("href", "/new");
-  await expect(page.getByRole("link", { name: /Keep your matches/ })).toHaveAttribute("href", "/account");
-  await expect(page.getByText("No matches yet")).toBeVisible();
+  const tabs = page.getByRole("navigation", { name: "Tabs" });
+  await expect(tabs.getByRole("link", { name: "New match" })).toHaveAttribute("href", "/new");
+  await expect(tabs.getByRole("link", { name: "Account" })).toHaveAttribute("href", "/account");
+  await expect(page.getByText("Score your first match")).toBeVisible();
 });
 
 test("home shows the copyright", async ({ page }) => {

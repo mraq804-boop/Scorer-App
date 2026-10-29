@@ -84,3 +84,22 @@ test("the install card hides for 14 days after Not now", async ({ page }) => {
   await page.waitForTimeout(1000);
   await expect(page.getByRole("region", { name: "Install the app" })).toHaveCount(0);
 });
+
+test("the last card clears the tab bar at 360 px", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 640 });
+  for (let match = 0; match < 3; match += 1) await startMatch(page);
+  await page.goto("/");
+  const cards = page.getByRole("region", { name: "Live now" }).getByRole("listitem");
+  await expect(cards).toHaveCount(3);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const last = await cards.last().boundingBox();
+  const bar = await tabs(page).boundingBox();
+  if (last === null || bar === null) throw new Error("missing boxes");
+  expect(last.y + last.height).toBeLessThanOrEqual(bar.y);
+  for (const label of ["Home", "My team", "Stats", "Account"]) {
+    const box = await tabs(page).getByRole("link", { name: label, exact: true }).boundingBox();
+    expect(box?.height ?? 0).toBeLessThan(64);
+    const text = await tabs(page).getByRole("link", { name: label, exact: true }).locator("span").boundingBox();
+    expect(text?.height ?? 0).toBeLessThan(20);
+  }
+});
