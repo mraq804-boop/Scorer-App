@@ -155,7 +155,7 @@ function TeamSections({ client, team, onChanged }: { client: SupabaseClient; tea
       <div role="tabpanel" id={SECTION_PANEL_ID} aria-labelledby={sectionTabId(section)} className="flex flex-col gap-5">
         {section === "squad" && <SquadEditor client={client} team={team} onChanged={onChanged} />}
         {section === "fixtures" && <FixturesEditor client={client} team={team} onChanged={onChanged} />}
-        {section === "results" && owner && <MatchOutcomes client={client} team={team} />}
+        {section === "results" && owner && <MatchOutcomes client={client} team={team} onChanged={onChanged} />}
         {section === "settings" && owner && (
           <>
             <OwnerHeader client={client} team={team} onChanged={onChanged} />

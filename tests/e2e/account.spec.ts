@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { CORS, fulfillJson } from "./support/fake-sync";
+import { fakeAccount, openNewMatch, waitForSession } from "./support/team";
 
 test("account shows Google sign-in for guests", async ({ page }) => {
   await page.goto("/account");
@@ -75,4 +77,21 @@ test("a page restored from the back-forward cache is reloaded, a normal show is 
   await Promise.all([page.waitForEvent("load"), show(true)]);
   expect(await survives()).toBe(false);
   await expect(page.getByRole("button", { name: "Sign in with Google" })).toBeVisible();
+});
+
+test("a signed-in account lists only matches that weren't deleted", async ({ page }) => {
+  await fakeAccount(page, "google", null);
+  await openNewMatch(page);
+  await waitForSession(page);
+  const requests: string[] = [];
+  await page.route("**/rest/v1/matches?*", (route) => {
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
+    requests.push(route.request().url());
+    return fulfillJson(route, []);
+  });
+
+  await page.goto("/account");
+
+  await expect.poll(() => requests.length).toBeGreaterThan(0);
+  expect(new URL(requests[0]).searchParams.get("visibility")).toBe("eq.link");
 });

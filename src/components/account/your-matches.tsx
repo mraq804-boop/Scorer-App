@@ -37,6 +37,7 @@ async function loadAccount(client: SupabaseClient, userId: string): Promise<Acco
     .from("matches")
     .select(COLUMNS)
     .eq("owner_id", userId)
+    .eq("visibility", "link")
     .order("updated_at", { ascending: false });
   if (error !== null) throw new Error(error.message);
   const db = getLocalDb();

@@ -3,20 +3,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { LoaderCircle, UserPlus } from "lucide-react";
 import { useEffect, useId, useState } from "react";
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { t } from "@/lib/i18n";
 import type { CachedTeam } from "@/lib/local/db";
 import { inviteUrl } from "@/lib/site-url";
 import { createScorerInvite, fetchScorers, removeScorer } from "@/lib/team/remote";
 import type { Scorer } from "@/lib/team/remote";
+import { ConfirmDialog } from "./confirm-dialog";
 import { FormAlert, teamErrorMessage } from "./form";
 import { ShareLink } from "./share-link";
 
@@ -33,48 +26,15 @@ function scorerName(scorer: Scorer): string {
 type RemoveDialogProps = { client: SupabaseClient; scorer: Scorer; onRemoved: () => Promise<void>; onClose: () => void };
 
 function RemoveDialog({ client, scorer, onRemoved, onClose }: RemoveDialogProps) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | undefined>(undefined);
-
-  const confirm = async () => {
-    setBusy(true);
-    setError(undefined);
-    const result = await removeScorer(client, scorer.userId);
-    if (!result.ok) {
-      setError(teamErrorMessage(result.error));
-      setBusy(false);
-      return;
-    }
-    await onRemoved();
-    onClose();
-  };
-
   return (
-    <AlertDialog open onOpenChange={(open) => !open && !busy && onClose()}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle className="min-w-0 truncate text-lg font-bold">
-            <bdi>{t("team.scorers.removeTitle", { name: scorerName(scorer) })}</bdi>
-          </AlertDialogTitle>
-          <AlertDialogDescription>{t("team.scorers.removeBody")}</AlertDialogDescription>
-        </AlertDialogHeader>
-        {error !== undefined && <FormAlert message={error} />}
-        <div className="flex flex-col gap-2">
-          <Button
-            variant="destructive"
-            disabled={busy}
-            onClick={() => void confirm()}
-            className="h-12 rounded-xl text-base font-semibold"
-          >
-            {busy && <LoaderCircle className="size-5 animate-spin" aria-hidden />}
-            {t("team.scorers.remove")}
-          </Button>
-          <AlertDialogCancel disabled={busy} className="h-12 rounded-xl text-base font-semibold">
-            {t("common.cancel")}
-          </AlertDialogCancel>
-        </div>
-      </AlertDialogContent>
-    </AlertDialog>
+    <ConfirmDialog
+      title={t("team.scorers.removeTitle", { name: scorerName(scorer) })}
+      body={t("team.scorers.removeBody")}
+      confirmLabel={t("team.scorers.remove")}
+      onConfirm={() => removeScorer(client, scorer.userId)}
+      onDone={onRemoved}
+      onClose={onClose}
+    />
   );
 }
 

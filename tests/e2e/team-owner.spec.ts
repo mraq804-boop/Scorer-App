@@ -3,7 +3,8 @@ import type { Page } from "@playwright/test";
 import type { CachedTeam } from "@/lib/local/db";
 import type { SquadPlayer } from "@/lib/team";
 import { CORS, fulfillJson } from "./support/fake-sync";
-import { ALI, FIXTURE, HAMZA, TEAM_ID, fakeAccount, openNewMatch, team, waitForSession } from "./support/team";
+import { matchCode, startMatch } from "./support/scoring";
+import { ALI, FIXTURE, HAMZA, TEAM_ID, fakeAccount, openNewMatch, readStore, team, waitForSession } from "./support/team";
 
 const WINTER = { id: "44444444-4444-4444-8444-444444444444", name: "Winter 2026", startsOn: "2026-11-01", endsOn: "2027-02-28" };
 
@@ -262,6 +263,57 @@ test("results suggest a Player of the match and save an override and No result",
 
   await results.getByRole("switch", { name: "No result" }).click();
   await expect.poll(() => noResult).toEqual([{ p_code: "mmmm2222", p_no_result: true }]);
+});
+
+test("the owner deletes a match from Results, and it leaves this phone too", async ({ page }) => {
+  const matchId = await startMatch(page, { names: { teamA: "Lions", teamB: "Kites" } });
+  const code = await matchCode(page, matchId);
+  await signIn(page, team());
+  const deleted = await stubRpc(page, "delete_match", null);
+  await page.route("**/rest/v1/rpc/get_team_page", (route) => {
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
+    return fulfillJson(route, { ...teamPage, matches: deleted.length === 0 ? [{ ...teamPage.matches[0], code }] : [] });
+  });
+  await page.goto("/team?section=results");
+  const results = page.getByRole("region", { name: "Results" });
+
+  await results.getByRole("button", { name: "Delete Lions vs Kites" }).click();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog).toContainText("Delete Lions vs Kites?");
+  await expect(dialog).toContainText("This can't be undone.");
+  await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+
+  await expect.poll(() => deleted).toEqual([{ p_code: code }]);
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText("Match deleted")).toBeVisible();
+  await expect(results.getByRole("listitem")).toHaveCount(0);
+  await expect(results).toContainText("Team matches you score show up here.");
+  expect(await readStore(page, "matches")).toEqual([]);
+  expect(await readStore(page, "events")).toEqual([]);
+
+  await page.goto("/");
+  await expect(page.getByText("Score your first match")).toBeVisible();
+});
+
+test("a failed delete keeps the match and says why", async ({ page }) => {
+  await signIn(page, team());
+  await stubRpc(page, "get_team_page", teamPage);
+  await page.route("**/rest/v1/rpc/delete_match", (route) =>
+    route.request().method() === "OPTIONS"
+      ? route.fulfill({ status: 204, headers: CORS })
+      : route.fulfill({ status: 400, headers: CORS, contentType: "application/json", body: JSON.stringify({ code: "P0001", message: "not_team_owner" }) }),
+  );
+  await page.goto("/team?section=results");
+  const results = page.getByRole("region", { name: "Results" });
+
+  await results.getByRole("button", { name: "Delete Lions vs Kites" }).click();
+  const dialog = page.getByRole("alertdialog");
+  await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+
+  await expect(dialog.getByRole("alert")).toHaveText("Only the team owner can change this.");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(results.getByRole("listitem")).toContainText("Lions won by 20 runs");
 });
 
 test("an owner creates a scorer invite to share on WhatsApp", async ({ page }) => {

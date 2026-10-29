@@ -1,19 +1,25 @@
 "use client";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { Trash2 } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { ShareImageLink } from "@/components/share/share-image-link";
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { t } from "@/lib/i18n";
+import { getLocalDb } from "@/lib/local/db";
 import type { CachedTeam } from "@/lib/local/db";
+import { removeLocalMatch } from "@/lib/local/matches";
 import { aggregateTeamStats } from "@/lib/team";
 import type { TeamPageData, TeamPageMatch } from "@/lib/team";
-import { fetchTeamPage, setPotm, setResultOverride } from "@/lib/team/remote";
+import { deleteMatch, fetchTeamPage, setPotm, setResultOverride } from "@/lib/team/remote";
 import type { TeamError, TeamResult } from "@/lib/team/remote";
+import { ConfirmDialog } from "./confirm-dialog";
 import { FormAlert, SelectField, teamErrorMessage } from "./form";
 
-type MatchOutcomesProps = { client: SupabaseClient; team: CachedTeam };
+type MatchOutcomesProps = { client: SupabaseClient; team: CachedTeam; onChanged: () => Promise<void> };
 
 type Load = { kind: "loading" } | { kind: "failed" } | { kind: "ready"; page: TeamPageData };
 
@@ -24,6 +30,7 @@ type OutcomeRowProps = {
   posterPlayer: string | null;
   when: string | null;
   onChange: (change: () => Promise<TeamResult<void>>) => Promise<string | undefined>;
+  onDelete: () => void;
   client: SupabaseClient;
 };
 
@@ -31,7 +38,7 @@ function outcomeError(error: TeamError): string {
   return error === "not_in_xi" ? t("team.error.notInXi") : teamErrorMessage(error);
 }
 
-function OutcomeRow({ match, names, suggestion, posterPlayer, when, onChange, client }: OutcomeRowProps) {
+function OutcomeRow({ match, names, suggestion, posterPlayer, when, onChange, onDelete, client }: OutcomeRowProps) {
   const noResultId = useId();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -97,13 +104,24 @@ function OutcomeRow({ match, names, suggestion, posterPlayer, when, onChange, cl
         />
       </div>
       {error !== undefined && <FormAlert message={error} />}
+      <Button
+        variant="ghost"
+        disabled={busy}
+        onClick={onDelete}
+        aria-label={t("team.outcomes.deleteLabel", { title: match.title })}
+        className="h-11 self-start rounded-xl px-3 text-base font-semibold text-destructive hover:bg-danger-soft hover:text-destructive"
+      >
+        <Trash2 className="size-5" aria-hidden />
+        {t("team.outcomes.delete")}
+      </Button>
     </li>
   );
 }
 
-export function MatchOutcomes({ client, team }: MatchOutcomesProps) {
+export function MatchOutcomes({ client, team, onChanged }: MatchOutcomesProps) {
   const headingId = useId();
   const [load, setLoad] = useState<Load>({ kind: "loading" });
+  const [deleting, setDeleting] = useState<TeamPageMatch | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -148,12 +166,23 @@ export function MatchOutcomes({ client, team }: MatchOutcomesProps) {
     };
   }, [load]);
 
+  const reload = async () => {
+    const refreshed = await fetchTeamPage(client, team.code);
+    if (refreshed.ok) setLoad({ kind: "ready", page: refreshed.value });
+  };
+
   const onChange = async (call: () => Promise<TeamResult<void>>): Promise<string | undefined> => {
     const result = await call();
     if (!result.ok) return outcomeError(result.error);
-    const refreshed = await fetchTeamPage(client, team.code);
-    if (refreshed.ok) setLoad({ kind: "ready", page: refreshed.value });
+    await reload();
     return undefined;
+  };
+
+  const onDeleted = async (code: string) => {
+    await removeLocalMatch(getLocalDb(), code).catch(() => false);
+    await reload();
+    toast.success(t("team.outcomes.deleted"));
+    await onChanged();
   };
 
   return (
@@ -175,10 +204,21 @@ export function MatchOutcomes({ client, team }: MatchOutcomesProps) {
               posterPlayer={view.posterPlayer(match)}
               when={view.when(match)}
               onChange={onChange}
+              onDelete={() => setDeleting(match)}
               client={client}
             />
           ))}
         </ul>
+      )}
+      {deleting !== null && (
+        <ConfirmDialog
+          title={t("team.outcomes.deleteTitle", { title: deleting.title })}
+          body={t("team.outcomes.deleteBody")}
+          confirmLabel={t("team.outcomes.delete")}
+          onConfirm={() => deleteMatch(client, deleting.code)}
+          onDone={() => onDeleted(deleting.code)}
+          onClose={() => setDeleting(null)}
+        />
       )}
     </section>
   );

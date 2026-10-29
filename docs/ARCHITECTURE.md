@@ -52,7 +52,7 @@ Each delivery records who was on strike, at the other end and bowling. The score
 - **Reads and broadcasts (server to client): flat.** `match_event_json` rebuilds `payload || { id, seq, at, type }`, the same shape as the in-app `MatchEvent`. `get_live_match`, `get_live_events`, `get_owner_events` and the Realtime trigger all use it, so the viewer and the take-over code use the events as they come.
 
 ## Security model
-- **RLS on every table, and no table writes.** `matches`, `match_events` and `match_claims` have RLS on. `insert`, `update`, `delete` and `truncate` are revoked from `anon` and `authenticated`. Events can never be changed or removed.
+- **RLS on every table, and no table writes.** `matches`, `match_events` and `match_claims` have RLS on. `insert`, `update`, `delete` and `truncate` are revoked from `anon` and `authenticated`. Events can never be changed or removed. Deleting a match only hides it (see Teams).
 - **Security-definer RPCs** (`set search_path = ''`) are the only way in. Internal helpers (`match_event_json`, `match_events_after`, the broadcast trigger function) have no grants.
   - Scoring and ownership: `push_match_events`, `take_over_scoring`, `get_owner_events`, `create_claim_token` and `claim_matches`, granted to `authenticated` only. Guests count as authenticated, but `claim_matches` also needs a Google user.
   - Viewing: `get_live_match` and `get_live_events` (anyone), which only return matches with visibility `link`, looked up by code. Matches cannot be listed.
@@ -109,7 +109,7 @@ Each delivery records who was on strike, at the other end and bowling. The score
   - Matches in progress show as Live and count nowhere until they finish or are marked No result.
   - A match counts in the season whose dates include the day it was played, in the team's time zone.
 - **RPCs.** All are security definer with `search_path = ''`, and `anon` and `authenticated` have no table writes.
-  - Owner only: `update_team` (name, home ground, time zone), `upsert_season`, `upsert_fixture`, `set_potm`, `set_result_override`, `create_scorer_invite`, `remove_scorer`, and the team look: `set_team_colour`, `set_team_logo`, `set_player_photo`.
+  - Owner only: `update_team` (name, home ground, time zone), `upsert_season`, `upsert_fixture`, `set_potm`, `set_result_override`, `delete_match`, `create_scorer_invite`, `remove_scorer`, and the team look: `set_team_colour`, `set_team_logo`, `set_player_photo`.
   - Owner or scorer: `upsert_squad_players` (a scorer can add players but not change them) and `get_my_team`.
   - Google users: `accept_scorer_invite`.
   - Anyone: `get_team_page(code)`. It returns the team (with its colour and logo version), squad (with photo versions), seasons, fixtures without notes, and up to 500 link-visible team matches with their record, Player of the match and No result. It never returns events. `get_live_match(code)` adds a `team` block for a team match: code, name, colour, logo version, side, Player of the match, No result, the XI and the photo versions of XI players.
@@ -117,8 +117,9 @@ Each delivery records who was on strike, at the other end and bowling. The score
   - A push with a `team` block links the match to that team when the caller owns the team or scores for it.
   - A push from someone who is no longer a member, such as a removed scorer, still syncs, but the match isn't linked, so no ball is lost.
   - A push without the block keeps the existing link.
-  - Linking a fixture marks it played.
+  - Linking a fixture marks it played, unless the match has been deleted.
   - A record over 16 KB is stored as empty: the match still syncs, but its figures don't count.
+- **Deleting a match.** The owner's Delete on My team → Results calls `delete_match(code)`, which sets the team match's visibility to `private` and puts a played fixture back to scheduled. Nothing is wiped: every public reader already skips `private` matches, so the match leaves the team page, stats, live link and Realtime, and the scorer's "Your matches" list hides it too. Because the row stays, a scorer's phone that keeps pushing only updates the hidden match instead of recreating it. The owner's own phone also drops its local copy and events (`removeLocalMatch`); other phones keep theirs. A repeat call succeeds, and there is no undo screen yet.
 - **Limits per team:** 60 squad players, 300 fixtures, 30 seasons, 10 scorers and 5 open invites. Names can be up to 40 characters, grounds 60 and fixture notes 280.
 
 ## Team look and posters
