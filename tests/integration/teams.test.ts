@@ -637,6 +637,7 @@ describe("access", () => {
       "accept_scorer_invite(p_token text)": ["authenticated"],
       "create_scorer_invite()": ["authenticated"],
       "create_team(p_name text, p_home_ground text, p_time_zone text)": ["authenticated"],
+      "delete_match(p_code text)": ["authenticated"],
       "fixture_json(f fixtures)": [],
       "get_my_team()": ["authenticated"],
       "get_team_page(p_code text)": ["anon", "authenticated"],
@@ -860,5 +861,86 @@ describe("team media storage", () => {
       file_size_limit: 307200,
       allowed_mime_types: ["image/jpeg"],
     });
+  });
+});
+
+describe("delete_match", () => {
+  async function visibility(id: string) {
+    const [row] = await rows<{ visibility: string }>(`select visibility from public.matches where id = $1`, [id]);
+    return row.visibility;
+  }
+
+  async function pageCodes() {
+    return ((await teamPage(lions.code))?.matches as { code: string }[]).map((m) => m.code);
+  }
+
+  function fixtureRow(id: string) {
+    return rows(`select status, match_id from public.fixtures where id = $1`, [id]);
+  }
+
+  it("hides the owner's team match everywhere and frees its fixture", async () => {
+    const fixtureId = await upsertFixture(OWNER, fixture(-3, { opponent: "Hawks" }));
+    const match = newMatch();
+    await push(SCORER, match, [1, 2], link(lions, fixtureId));
+    expect(await fixtureRow(fixtureId)).toEqual([{ status: "played", match_id: match.id }]);
+    expect(await pageCodes()).toContain(match.code);
+
+    await call(OWNER, "delete_match", [match.code]);
+
+    expect(await visibility(match.id)).toBe("private");
+    expect(await pageCodes()).not.toContain(match.code);
+    expect(await call("anon", "get_live_match", [match.code])).toBeNull();
+    expect(await call("anon", "get_live_events", [match.code, 0])).toEqual([]);
+    expect((await matchRow(match.id)).fixture_id).toBeNull();
+    expect(await fixtureRow(fixtureId)).toEqual([{ status: "scheduled", match_id: null }]);
+    const fixtures = (await teamPage(lions.code))?.fixtures as { id: string; status: string; matchCode: string | null }[];
+    expect(fixtures.find((f) => f.id === fixtureId)).toMatchObject({ status: "scheduled", matchCode: null });
+    expect(await rows(`select 1 from public.match_events where match_id = $1`, [match.id])).toHaveLength(2);
+  });
+
+  it("leaves a cancelled fixture cancelled", async () => {
+    const falcons = fixture(-4, { opponent: "Falcons" });
+    const fixtureId = await upsertFixture(OWNER, falcons);
+    const match = newMatch();
+    await push(SCORER, match, [1], link(lions, fixtureId));
+    await upsertFixture(OWNER, { ...falcons, id: fixtureId, status: "cancelled" });
+
+    await call(OWNER, "delete_match", [match.code]);
+
+    expect(await fixtureRow(fixtureId)).toEqual([{ status: "cancelled", match_id: null }]);
+  });
+
+  it("only the team's owner deletes, and deleting twice still succeeds", async () => {
+    const match = newMatch();
+    await push(SCORER, match, [1], link(lions));
+    const unlinked = newMatch();
+    await push(OWNER, unlinked, [1]);
+
+    await expectDbError(call(SCORER, "delete_match", [match.code]), /not_team_owner/);
+    await expectDbError(call(OTHER_OWNER, "delete_match", [match.code]), /not_team_owner/);
+    await expectDbError(call(GUEST, "delete_match", [match.code]), /not_team_owner/);
+    await expectDbError(call("anon", "delete_match", [match.code]), /permission denied/);
+    await expectDbError(call(OWNER, "delete_match", ["zzzzzzzz"]), /not_team_owner/);
+    await expectDbError(call(OWNER, "delete_match", [unlinked.code]), /not_team_owner/);
+    expect(await visibility(match.id)).toBe("link");
+    expect(await visibility(unlinked.id)).toBe("link");
+
+    await call(OWNER, "delete_match", [match.code]);
+    await call(OWNER, "delete_match", [match.code]);
+    expect(await visibility(match.id)).toBe("private");
+  });
+
+  it("a scorer who keeps scoring a deleted match keeps it hidden and its fixture free", async () => {
+    const fixtureId = await upsertFixture(OWNER, fixture(-5, { opponent: "Kites" }));
+    const match = newMatch();
+    await push(SCORER, match, [1], link(lions, fixtureId));
+    await call(OWNER, "delete_match", [match.code]);
+
+    expect(await push(SCORER, match, [2, 3], link(lions, fixtureId))).toBe(3);
+
+    expect(await visibility(match.id)).toBe("private");
+    expect(await matchRow(match.id)).toMatchObject({ team_id: lions.id, fixture_id: null, last_seq: 3 });
+    expect(await fixtureRow(fixtureId)).toEqual([{ status: "scheduled", match_id: null }]);
+    expect(await pageCodes()).not.toContain(match.code);
   });
 });

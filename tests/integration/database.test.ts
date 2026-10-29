@@ -287,6 +287,7 @@ describe("privileges", () => {
       "create_claim_token",
       "create_scorer_invite",
       "create_team",
+      "delete_match",
       "get_live_events",
       "get_live_match",
       "get_my_team",
