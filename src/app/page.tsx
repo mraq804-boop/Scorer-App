@@ -10,10 +10,10 @@ import { TeamCacheRefresh } from "@/components/team/team-cache-refresh";
 export default function Home() {
   return (
     <>
-      <AppBar title={<HomeTitle />} actions={<InstallIcon />} />
+      <AppBar title={<HomeTitle />} heading actions={<InstallIcon />} />
       <main className="app-screen mx-auto flex w-full max-w-md flex-col gap-6 px-4 pt-5 pb-8">
-        <MatchList />
         <InstallCard />
+        <MatchList />
         <Copyright />
         <TeamCacheRefresh />
         <GuestSession />

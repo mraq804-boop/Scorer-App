@@ -57,6 +57,23 @@ async function commit(
   return { match: next, events };
 }
 
+export async function backfillWinners(db: LocalDb): Promise<number> {
+  const missing = (await db.matches.toArray()).filter(
+    (match) => match.summary.status === "complete" && match.summary.winner === undefined,
+  );
+  let updated = 0;
+  for (const match of missing) {
+    try {
+      const winner = summarize(replay(await loadEvents(db, match.id))).winner ?? null;
+      await db.matches.update(match.id, { summary: { ...match.summary, winner } });
+      updated += 1;
+    } catch {
+      continue;
+    }
+  }
+  return updated;
+}
+
 export async function appendEvents(
   db: LocalDb,
   matchId: string,

@@ -4,21 +4,18 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { ChevronRight, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { StorageError } from "@/components/storage-error";
+import { OutcomePill } from "@/components/team-page/match-list";
 import { matchSection, teamPill } from "@/lib/app/home";
 import type { TeamPill } from "@/lib/app/home";
+import type { MatchOutcome } from "@/lib/i18n/team";
 import { t } from "@/lib/i18n";
 import { checkStorage, getLocalDb } from "@/lib/local/db";
 import type { LocalMatch } from "@/lib/local/db";
-import { cn } from "@/lib/utils";
+import { backfillWinners } from "@/lib/local/matches";
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 
-const PILL_STYLES: Record<TeamPill, string> = {
-  W: "bg-success text-white",
-  L: "bg-destructive text-white",
-  T: "bg-muted text-foreground",
-  NR: "bg-muted text-muted-foreground",
-};
+const OUTCOMES: Record<TeamPill, MatchOutcome> = { W: "won", L: "lost", T: "tied", NR: "noResult" };
 
 async function loadMatches(): Promise<LocalMatch[] | null> {
   try {
@@ -52,7 +49,7 @@ function SyncStatus({ match }: { match: LocalMatch }) {
   );
 }
 
-function MatchItem({ match, live }: { match: LocalMatch; live: boolean }) {
+export function MatchCard({ match, live }: { match: LocalMatch; live: boolean }) {
   const pill = teamPill(match);
   return (
     <li>
@@ -60,11 +57,7 @@ function MatchItem({ match, live }: { match: LocalMatch; live: boolean }) {
         href={`/score?m=${match.id}`}
         className="press flex items-center gap-3 rounded-2xl border bg-card p-4 outline-none hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50"
       >
-        {pill !== null && (
-          <span className={cn("grid h-9 min-w-9 shrink-0 place-items-center rounded-full px-2 text-xs font-bold", PILL_STYLES[pill])}>
-            {pill}
-          </span>
-        )}
+        {pill !== null && <OutcomePill outcome={OUTCOMES[pill]} />}
         <span className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="flex items-start justify-between gap-3">
             {live && (
@@ -100,7 +93,7 @@ function MatchSection({ id, title, matches, live }: { id: string; title: string;
       </h2>
       <ul className="flex flex-col gap-3">
         {matches.map((match) => (
-          <MatchItem key={match.id} match={match} live={live} />
+          <MatchCard key={match.id} match={match} live={live} />
         ))}
       </ul>
     </section>
@@ -126,6 +119,10 @@ function EmptyState() {
 export function MatchList() {
   const matches = useLiveQuery(loadMatches);
   const [now] = useState(() => Date.now());
+
+  useEffect(() => {
+    void backfillWinners(getLocalDb()).catch(() => undefined);
+  }, []);
   const unavailable = useStorageUnavailable();
   if (unavailable || matches === null) return <StorageError />;
   if (matches === undefined) return null;

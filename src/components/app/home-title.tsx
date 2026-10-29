@@ -33,7 +33,7 @@ export function HomeTitle() {
         url={logoUrl(team.code, team.logoVersion)}
         size={32}
         colour={colourFor(team.colour, team.name)}
-        alt={t("brand.logoAlt", { name: team.name })}
+        alt=""
         className="ring-2 ring-haldi"
       />
       <bdi className="truncate">{team.name}</bdi>

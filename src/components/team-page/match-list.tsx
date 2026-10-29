@@ -6,7 +6,7 @@ import type { TeamPageMatch } from "@/lib/team";
 import { cn } from "@/lib/utils";
 
 const PILLS: Record<MatchOutcome, { short: string; label: string; className: string }> = {
-  won: { short: t("teamPage.pill.won"), label: t("teamPage.outcome.won"), className: "bg-success text-white" },
+  won: { short: t("teamPage.pill.won"), label: t("teamPage.outcome.won"), className: "bg-success-soft text-success" },
   lost: { short: t("teamPage.pill.lost"), label: t("teamPage.outcome.lost"), className: "bg-danger-soft text-destructive" },
   tied: { short: t("teamPage.pill.tied"), label: t("teamPage.outcome.tied"), className: "bg-muted text-foreground" },
   noResult: { short: t("teamPage.pill.noResult"), label: t("teamPage.outcome.noResult"), className: "bg-muted text-foreground" },

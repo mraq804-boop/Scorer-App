@@ -7,12 +7,15 @@ import { LocalDb, checkStorage } from "@/lib/local/db";
 import type { LocalMatch } from "@/lib/local/db";
 import {
   appendEvents,
+  backfillWinners,
   createLocalMatch,
   getDeviceId,
   loadEvents,
   recentPlayerNames,
 } from "@/lib/local/matches";
 import type { MatchSetup } from "@/lib/local/matches";
+import { summarize } from "@/lib/share/summary";
+import { TestMatch } from "../../helpers/match";
 
 const opened: LocalDb[] = [];
 
@@ -328,3 +331,29 @@ describe("recentPlayerNames", () => {
     expect(await recentPlayerNames(freshDb())).toEqual([]);
   });
 });
+
+describe("backfillWinners", () => {
+  it("records the winner of matches finished before it was saved, once", async () => {
+    const db = freshDb();
+    const m = new TestMatch({ overs: 1 });
+    m.ball({ runs: 4, boundary: true });
+    m.endInnings("overs");
+    m.startInnings2(["Zain", "Faisal"], "Usman");
+    m.ball({ runs: 1 });
+    m.endInnings("overs");
+    const created = await createLocalMatch(db, setup());
+    await db.events.where("matchId").equals(created.id).delete();
+    await db.events.bulkAdd(m.events.map((event) => ({ ...event, matchId: created.id })));
+    const { winner, ...older } = summarize(m.state);
+    expect(winner).toBe("A");
+    await db.matches.update(created.id, { summary: older });
+    const before = await db.matches.get(created.id);
+
+    expect(await backfillWinners(db)).toBe(1);
+    const after = await db.matches.get(created.id);
+    expect(after?.summary.winner).toBe("A");
+    expect(after?.updatedAt).toBe(before?.updatedAt);
+    expect(await backfillWinners(db)).toBe(0);
+  });
+});
+

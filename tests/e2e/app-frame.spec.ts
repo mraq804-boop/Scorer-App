@@ -161,3 +161,8 @@ test("switching My team sections doesn't wait on the server", async ({ page }) =
   await expect(page.getByRole("region", { name: "Seasons" })).toBeVisible();
   expect(serverFetches).toEqual([]);
 });
+
+test("Home has a main heading", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1, name: "Cricket Scorer" })).toBeVisible();
+});
