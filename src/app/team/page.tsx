@@ -1,9 +1,13 @@
 "use client";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ChevronLeft, LoaderCircle, Pencil } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Pencil } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { AppBar } from "@/components/app/app-bar";
+import { ShareLinkButton } from "@/components/app/share-link-button";
+import { Avatar } from "@/components/team-page/avatar";
 import { BrandEditor } from "@/components/team/brand-editor";
 import { CreateTeam, EditTeam } from "@/components/team/create-team";
 import { FixturesEditor } from "@/components/team/fixtures-editor";
@@ -14,7 +18,12 @@ import { SeasonsEditor } from "@/components/team/seasons-editor";
 import { SignInCard } from "@/components/team/sign-in-card";
 import { ShareLink } from "@/components/team/share-link";
 import { SquadEditor } from "@/components/team/squad-editor";
+import { TeamSectionTabs } from "@/components/team/team-section-tabs";
 import { Button } from "@/components/ui/button";
+import { MY_TEAM_KEY, rememberTeamCode } from "@/lib/app/frame";
+import { sectionFromQuery, sectionsFor } from "@/lib/app/team-sections";
+import type { TeamSection } from "@/lib/app/team-sections";
+import { colourFor, logoUrl } from "@/lib/brand";
 import { t } from "@/lib/i18n";
 import { getLocalDb } from "@/lib/local/db";
 import type { CachedTeam } from "@/lib/local/db";
@@ -96,7 +105,68 @@ function PublicLink({ team }: { team: CachedTeam }) {
   );
 }
 
-function TeamContent() {
+function TeamSummary({ team }: { team: CachedTeam }) {
+  return (
+    <section className="flex items-center gap-3">
+      <Avatar
+        name={team.name}
+        url={logoUrl(team.code, team.logoVersion)}
+        size={52}
+        colour={colourFor(team.colour, team.name)}
+        alt={t("brand.logoAlt", { name: team.name })}
+        className="ring-3 ring-haldi"
+      />
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <h2 className="truncate text-xl font-bold">
+          <bdi>{team.name}</bdi>
+        </h2>
+        {team.homeGround !== null && (
+          <p className="truncate text-sm text-muted-foreground">
+            <bdi>{team.homeGround}</bdi>
+          </p>
+        )}
+        {team.role === "scorer" && <p className="text-sm font-semibold text-muted-foreground">{t("team.role.scorer")}</p>}
+      </div>
+    </section>
+  );
+}
+
+function Loading() {
+  return (
+    <div aria-busy="true" className="flex flex-col gap-4">
+      <div className="h-14 animate-pulse rounded-2xl bg-muted" />
+      <div className="h-12 animate-pulse rounded-2xl bg-muted" />
+      <div className="h-48 animate-pulse rounded-2xl bg-muted" />
+    </div>
+  );
+}
+
+function TeamSections({ client, team, onChanged }: { client: SupabaseClient; team: CachedTeam; onChanged: () => Promise<void> }) {
+  const router = useRouter();
+  const section = sectionFromQuery(useSearchParams().get("section"), team.role);
+  const owner = team.role === "owner";
+  const select = (next: TeamSection) => router.push(`/team?section=${next}`, { scroll: false });
+  return (
+    <>
+      <TeamSummary team={team} />
+      <TeamSectionTabs sections={sectionsFor(team.role)} current={section} onSelect={select} />
+      {section === "squad" && <SquadEditor client={client} team={team} onChanged={onChanged} />}
+      {section === "fixtures" && <FixturesEditor client={client} team={team} onChanged={onChanged} />}
+      {section === "results" && owner && <MatchOutcomes client={client} team={team} />}
+      {section === "settings" && owner && (
+        <>
+          <OwnerHeader client={client} team={team} onChanged={onChanged} />
+          <BrandEditor client={client} team={team} onChanged={onChanged} />
+          <PublicLink team={team} />
+          <SeasonsEditor client={client} team={team} onChanged={onChanged} />
+          <ScorersEditor client={client} team={team} />
+        </>
+      )}
+    </>
+  );
+}
+
+function TeamScreen() {
   const [view, setView] = useState<View>({ kind: "loading" });
 
   useEffect(() => {
@@ -114,6 +184,11 @@ function TeamContent() {
     setView(await loadView(client));
   };
 
+  useEffect(() => {
+    if (view.kind === "team") rememberTeamCode(MY_TEAM_KEY, view.team.code);
+    if (view.kind === "none") rememberTeamCode(MY_TEAM_KEY, null);
+  }, [view]);
+
   const refresh = async (client: SupabaseClient) => {
     try {
       const team = await refreshTeamCache(client, getLocalDb());
@@ -123,14 +198,31 @@ function TeamContent() {
     }
   };
 
+  const team = view.kind === "team" ? view.team : null;
+  return (
+    <>
+      <AppBar
+        title={t("team.title")}
+        heading
+        actions={team === null ? undefined : <ShareLinkButton url={teamUrl(team.code)} title={team.name} />}
+      />
+      <main className="app-screen mx-auto flex w-full max-w-md flex-col gap-5 px-4 pt-5 pb-8">
+        <TeamBody view={view} retry={retry} refresh={refresh} />
+      </main>
+    </>
+  );
+}
+
+type TeamBodyProps = {
+  view: View;
+  retry: (client: SupabaseClient) => Promise<void>;
+  refresh: (client: SupabaseClient) => Promise<void>;
+};
+
+function TeamBody({ view, retry, refresh }: TeamBodyProps) {
   switch (view.kind) {
     case "loading":
-      return (
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <LoaderCircle className="size-4 animate-spin" aria-hidden />
-          {t("team.loading")}
-        </p>
-      );
+      return <Loading />;
     case "guest":
       return <SignInCard client={view.client} title={t("team.guest.title")} body={t("team.guest.body")} next="/team" />;
     case "failed":
@@ -144,40 +236,15 @@ function TeamContent() {
       );
     case "none":
       return <CreateTeam client={view.client} onCreated={() => refresh(view.client)} />;
-    case "team": {
-      const { client, team } = view;
-      const onChanged = () => refresh(client);
-      const owner = team.role === "owner";
-      return (
-        <>
-          {owner ? <OwnerHeader client={client} team={team} onChanged={onChanged} /> : <TeamHeader team={team} />}
-          {owner && <BrandEditor client={client} team={team} onChanged={onChanged} />}
-          {owner && <PublicLink team={team} />}
-          <FixturesEditor client={client} team={team} onChanged={onChanged} />
-          {owner && <MatchOutcomes client={client} team={team} />}
-          <SquadEditor client={client} team={team} onChanged={onChanged} />
-          {owner && <SeasonsEditor client={client} team={team} onChanged={onChanged} />}
-          {owner && <ScorersEditor client={client} team={team} />}
-        </>
-      );
-    }
+    case "team":
+      return <TeamSections client={view.client} team={view.team} onChanged={() => refresh(view.client)} />;
   }
 }
 
 export default function TeamPage() {
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-5 px-4 pt-4 pb-8">
-      <header className="flex items-center gap-2">
-        <a
-          href="/"
-          aria-label={t("common.back")}
-          className="-ms-2 grid size-11 shrink-0 place-items-center rounded-full hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-        >
-          <ChevronLeft className="size-6 rtl:rotate-180" aria-hidden />
-        </a>
-        <h1 className="text-2xl font-bold">{t("team.title")}</h1>
-      </header>
-      <TeamContent />
-    </main>
+    <Suspense fallback={null}>
+      <TeamScreen />
+    </Suspense>
   );
 }

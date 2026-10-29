@@ -49,7 +49,7 @@ test("an owner picks a colour and uploads a logo", async ({ page }) => {
   const colours = await stubRpc(page, "set_team_colour");
   const logos = await stubRpc(page, "set_team_logo");
   await page.clock.setFixedTime(NOW);
-  await page.goto("/team");
+  await page.goto("/team?section=settings");
   const look = page.getByRole("region", { name: "Team look" });
 
   await look.getByRole("radio", { name: "Ocean" }).click();
@@ -78,7 +78,7 @@ test("a failed save keeps the old logo", async ({ page }) => {
   const storage = await stubStorage(page);
   await stubRpc(page, "set_team_logo", 500);
   await page.clock.setFixedTime(NOW);
-  await page.goto("/team");
+  await page.goto("/team?section=settings");
   const look = page.getByRole("region", { name: "Team look" });
   await expect(look.getByRole("img", { name: "Lions logo" })).toHaveAttribute("src", /\/teams\/abcd2345\/logo-2\.jpg$/);
 

@@ -69,7 +69,7 @@ test("guests see the Google prompt and no guest session starts", async ({ page }
     }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign in with Google" })).toBeEnabled();
-  await expect(page.getByRole("link", { name: "Back" })).toHaveAttribute("href", "/");
+  await expect(page.getByRole("navigation", { name: "Tabs" }).getByRole("link", { name: "My team" })).toHaveAttribute("aria-current", "page");
   await page.waitForTimeout(500);
   expect(signups).toEqual([]);
 });
@@ -98,7 +98,7 @@ test("the team page does not install the service worker", async ({ page }) => {
 test("home links to the team page", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByRole("link", { name: /Your team/ })).toHaveAttribute("href", "/team");
+  await expect(page.getByRole("navigation", { name: "Tabs" }).getByRole("link", { name: "My team" })).toHaveAttribute("href", "/team");
 });
 
 test("an owner sees the squad, seasons and the public team link", async ({ page }) => {
@@ -106,13 +106,15 @@ test("an owner sees the squad, seasons and the public team link", async ({ page 
   await page.goto("/team");
 
   await expect(page.getByRole("heading", { name: "Lions" })).toBeVisible();
-  await expect(page.getByTestId("team-link")).toHaveText("http://localhost:3200/t/abcd2345");
-  const whatsapp = await page.getByRole("link", { name: "Share on WhatsApp" }).getAttribute("href");
-  expect(decodeURIComponent(whatsapp ?? "")).toContain("http://localhost:3200/t/abcd2345");
   const squad = page.getByRole("region", { name: "Squad" });
   await expect(squad.getByRole("listitem")).toHaveCount(5);
   await expect(squad.getByRole("listitem").filter({ hasText: "Raza" })).toContainText("Inactive");
   await expect(squad.getByRole("button", { name: "Edit Raza" })).toBeVisible();
+
+  await page.getByRole("tab", { name: "Settings" }).click();
+  await expect(page.getByTestId("team-link")).toHaveText("http://localhost:3200/t/abcd2345");
+  const whatsapp = await page.getByRole("link", { name: "Share on WhatsApp" }).getAttribute("href");
+  expect(decodeURIComponent(whatsapp ?? "")).toContain("http://localhost:3200/t/abcd2345");
   await expect(page.getByRole("region", { name: "Seasons" })).toContainText("Winter 2026");
 });
 
@@ -121,7 +123,7 @@ test("an owner adds a player and the team is fetched again", async ({ page }) =>
   await page.goto("/team");
   const squad = page.getByRole("region", { name: "Squad" });
   await expect(squad.getByRole("listitem")).toHaveCount(5);
-  await expect(page.getByRole("region", { name: "Scorers" })).toContainText("No scorers yet.");
+  await expect.poll(() => calls.myTeam).toBeGreaterThan(0);
   calls.myTeam = 0;
 
   const upsert = page.waitForRequest((request) => request.url().endsWith("/rpc/upsert_squad_players"));
@@ -142,7 +144,7 @@ test("an owner can't add a season that ends before it starts", async ({ page }) 
     if (request.url().endsWith("/rpc/upsert_season")) seasonCalls.push(request.url());
   });
   await signIn(page, team());
-  await page.goto("/team");
+  await page.goto("/team?section=settings");
   const seasons = page.getByRole("region", { name: "Seasons" });
 
   await seasons.getByLabel("Season name").fill("Winter 2026");
@@ -181,7 +183,7 @@ test("a signed-in owner without a team gets the create form", async ({ page }) =
 
 test("fixtures show the team's local time and link to starting the match", async ({ page }) => {
   await signIn(page, team());
-  await page.goto("/team");
+  await page.goto("/team?section=fixtures");
   const fixtures = page.getByRole("region", { name: "Fixtures" });
 
   await expect(fixtures.getByRole("listitem")).toContainText("vs Kites");
@@ -193,7 +195,7 @@ test("fixtures show the team's local time and link to starting the match", async
 test("an owner adds a fixture in the team's time zone", async ({ page }) => {
   await signIn(page, team({ fixtures: [] }));
   const saved = await stubRpc(page, "upsert_fixture", FIXTURE.id);
-  await page.goto("/team");
+  await page.goto("/team?section=fixtures");
   const fixtures = page.getByRole("region", { name: "Fixtures" });
 
   await fixtures.getByLabel("Date").fill("2026-11-08");
@@ -219,7 +221,7 @@ test("an owner adds a fixture in the team's time zone", async ({ page }) => {
 
 test("a scorer can start a fixture but not edit it, and sees no owner sections", async ({ page }) => {
   await signIn(page, team({ role: "scorer" }));
-  await page.goto("/team");
+  await page.goto("/team?section=fixtures");
   const fixtures = page.getByRole("region", { name: "Fixtures" });
 
   await expect(fixtures.getByRole("link", { name: "Start match" })).toBeVisible();
@@ -234,7 +236,7 @@ test("results suggest a Player of the match and save an override and No result",
   await stubRpc(page, "get_team_page", teamPage);
   const potm = await stubRpc(page, "set_potm", null);
   const noResult = await stubRpc(page, "set_result_override", null);
-  await page.goto("/team");
+  await page.goto("/team?section=results");
   const results = page.getByRole("region", { name: "Results" });
 
   await expect(results.getByRole("listitem")).toContainText("Lions won by 20 runs");
@@ -250,7 +252,7 @@ test("results suggest a Player of the match and save an override and No result",
 test("an owner creates a scorer invite to share on WhatsApp", async ({ page }) => {
   await signIn(page, team());
   await stubRpc(page, "create_scorer_invite", "tok-abc");
-  await page.goto("/team");
+  await page.goto("/team?section=settings");
   const scorers = page.getByRole("region", { name: "Scorers" });
   await expect(scorers).toContainText("No scorers yet.");
 
@@ -276,7 +278,7 @@ test("the owner sees each scorer's name and removes the right one", async ({ pag
     ],
   });
   const removed = await stubRpc(page, "remove_scorer", null);
-  await page.goto("/team");
+  await page.goto("/team?section=settings");
   const scorers = page.getByRole("region", { name: "Scorers" });
 
   await expect(scorers.getByRole("listitem")).toHaveCount(2);
@@ -293,8 +295,8 @@ test("the owner sees each scorer's name and removes the right one", async ({ pag
 test("the owner edits the team's name, home ground and time zone", async ({ page }) => {
   const calls = await signIn(page, team());
   const saved = await stubRpc(page, "update_team", null);
-  await page.goto("/team");
-  await expect(page.getByRole("heading", { name: "Lions" })).toBeVisible();
+  await page.goto("/team?section=settings");
+  await expect(page.getByRole("heading", { name: "Lions" }).first()).toBeVisible();
   await expect(page.getByRole("region", { name: "Scorers" })).toContainText("No scorers yet.");
   calls.myTeam = 0;
 

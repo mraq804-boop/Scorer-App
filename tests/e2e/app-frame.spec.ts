@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { startMatch } from "./support/scoring";
+import { fakeAccount, openNewMatch, team, waitForSession } from "./support/team";
 
 const tabs = (page: import("@playwright/test").Page) => page.getByRole("navigation", { name: "Tabs" });
 
@@ -116,4 +117,30 @@ test("Appearance switches to dark and stays dark", async ({ page }) => {
 test("New match has a close button back to Home", async ({ page }) => {
   await page.goto("/new");
   await expect(page.getByRole("link", { name: "Close" })).toHaveAttribute("href", "/");
+});
+
+async function signInOwner(page: import("@playwright/test").Page) {
+  await fakeAccount(page, "google", team());
+  await openNewMatch(page);
+  await waitForSession(page);
+}
+
+test("My team sections switch and back returns", async ({ page }) => {
+  await signInOwner(page);
+  await page.goto("/team");
+  await expect(page.getByRole("region", { name: "Squad" })).toBeVisible();
+  await page.getByRole("tab", { name: "Settings" }).click();
+  await expect(page).toHaveURL(/section=settings/);
+  await expect(page.getByRole("region", { name: "Seasons" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Settings" })).toHaveAttribute("aria-selected", "true");
+  await page.goBack();
+  await expect(page.getByRole("region", { name: "Squad" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Seasons" })).toHaveCount(0);
+});
+
+test("Stats goes to your team once My team has loaded", async ({ page }) => {
+  await signInOwner(page);
+  await page.goto("/team");
+  await expect(page.getByRole("region", { name: "Squad" })).toBeVisible();
+  await expect(tabs(page).getByRole("link", { name: "Stats" })).toHaveAttribute("href", "/t/abcd2345");
 });
