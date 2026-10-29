@@ -268,7 +268,7 @@ test("results suggest a Player of the match and save an override and No result",
 test("the owner deletes a match from Results, and it leaves this phone too", async ({ page }) => {
   const matchId = await startMatch(page, { names: { teamA: "Lions", teamB: "Kites" } });
   const code = await matchCode(page, matchId);
-  await signIn(page, team());
+  const account = await signIn(page, team());
   const deleted = await stubRpc(page, "delete_match", null);
   await page.route("**/rest/v1/rpc/get_team_page", (route) => {
     if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
@@ -276,6 +276,8 @@ test("the owner deletes a match from Results, and it leaves this phone too", asy
   });
   await page.goto("/team?section=results");
   const results = page.getByRole("region", { name: "Results" });
+  await expect(results.getByRole("listitem")).toContainText("Lions won by 20 runs");
+  const teamLoads = account.myTeam;
 
   await results.getByRole("button", { name: "Delete Lions vs Kites" }).click();
   const dialog = page.getByRole("alertdialog");
@@ -290,14 +292,17 @@ test("the owner deletes a match from Results, and it leaves this phone too", asy
   await expect(results).toContainText("Team matches you score show up here.");
   expect(await readStore(page, "matches")).toEqual([]);
   expect(await readStore(page, "events")).toEqual([]);
+  await expect.poll(() => account.myTeam).toBeGreaterThan(teamLoads);
 
   await page.goto("/");
   await expect(page.getByText("Score your first match")).toBeVisible();
 });
 
-test("a failed delete keeps the match and says why", async ({ page }) => {
+test("a failed delete keeps the match here and on this phone, and says why", async ({ page }) => {
+  const matchId = await startMatch(page, { names: { teamA: "Lions", teamB: "Kites" } });
+  const code = await matchCode(page, matchId);
   await signIn(page, team());
-  await stubRpc(page, "get_team_page", teamPage);
+  await stubRpc(page, "get_team_page", { ...teamPage, matches: [{ ...teamPage.matches[0], code }] });
   await page.route("**/rest/v1/rpc/delete_match", (route) =>
     route.request().method() === "OPTIONS"
       ? route.fulfill({ status: 204, headers: CORS })
@@ -314,6 +319,8 @@ test("a failed delete keeps the match and says why", async ({ page }) => {
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toHaveCount(0);
   await expect(results.getByRole("listitem")).toContainText("Lions won by 20 runs");
+  expect((await readStore<{ code: string }>(page, "matches")).map((match) => match.code)).toEqual([code]);
+  expect((await readStore(page, "events")).length).toBeGreaterThan(0);
 });
 
 test("an owner creates a scorer invite to share on WhatsApp", async ({ page }) => {
