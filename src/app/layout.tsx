@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Figtree } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "sonner";
+import { TabBar } from "@/components/app/tab-bar";
 import { t } from "@/lib/i18n";
 import { siteUrl } from "@/lib/site-url";
 import "./globals.css";
@@ -14,7 +15,7 @@ export const metadata: Metadata = {
   title: { default: t("app.name"), template: `%s · ${t("app.name")}` },
   description: t("home.tagline"),
   applicationName: t("app.name"),
-  appleWebApp: { capable: true, title: t("app.name"), statusBarStyle: "default" },
+  appleWebApp: { capable: true, title: t("app.name"), statusBarStyle: "black" },
   formatDetection: { telephone: false },
 };
 
@@ -23,7 +24,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f6f7fb" },
+    { media: "(prefers-color-scheme: light)", color: "#1b2340" },
     { media: "(prefers-color-scheme: dark)", color: "#0e1328" },
   ],
 };
@@ -34,6 +35,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full bg-background text-foreground">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           {children}
+          <TabBar />
           <Toaster richColors position="top-center" theme="system" />
         </ThemeProvider>
       </body>
