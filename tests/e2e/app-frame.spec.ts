@@ -63,3 +63,24 @@ test("reduced motion turns press feedback off", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "no-preference" });
   expect(Number.parseFloat(await pressDuration())).toBeGreaterThan(0.05);
 });
+
+test("the install card hides for 14 days after Not now", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.addEventListener("load", () => {
+      setTimeout(() => {
+        const event = new Event("beforeinstallprompt");
+        Object.assign(event, { prompt: async () => undefined, userChoice: Promise.resolve({ outcome: "dismissed" }) });
+        window.dispatchEvent(event);
+      }, 300);
+    });
+  });
+  await page.goto("/");
+  const card = page.getByRole("region", { name: "Install the app" });
+  await expect(card).toBeVisible();
+  await card.getByRole("button", { name: "Not now" }).click();
+  await expect(card).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole("navigation", { name: "Tabs" })).toBeVisible();
+  await page.waitForTimeout(1000);
+  await expect(page.getByRole("region", { name: "Install the app" })).toHaveCount(0);
+});
