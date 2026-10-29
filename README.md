@@ -6,6 +6,7 @@ Offline-first cricket scoring app for the phone. Score a match with no signal, t
 - Anyone with the match link can follow the score live. Viewers never sign in.
 - A team owner keeps a squad, fixtures and seasons on `/team`. Matches scored for the team add up into a public team page (`/t/<code>`) with results, player stats and leaderboards.
 - The owner can give the team a colour, a logo and player photos. The live page, the team and player pages, and every share image use them, and each player gets a poster for each match.
+- It looks and works like a phone app: a bottom tab bar (Home, My team, a gold + for a new match, Stats and Account), a navy top bar, and full screen once installed.
 - Built with Next.js 16, Supabase and Vercel, as an installable PWA.
 
 ## Docs
@@ -13,6 +14,7 @@ Offline-first cricket scoring app for the phone. Score a match with no signal, t
 - [Implementation plan](docs/superpowers/plans/2026-10-23-score-and-share.md)
 - [Team page spec](docs/superpowers/specs/2026-10-27-team-page-design.md) and [plan](docs/superpowers/plans/2026-10-27-team-page.md)
 - [Visual makeover spec](docs/superpowers/specs/2026-10-28-visual-makeover-design.md) and [plan](docs/superpowers/plans/2026-10-28-visual-makeover.md)
+- [App look and feel spec](docs/superpowers/specs/2026-10-29-app-feel-design.md) and [plan](docs/superpowers/plans/2026-10-29-app-feel.md)
 - [Architecture](docs/ARCHITECTURE.md): event flow, wire shapes, security model, offline design, tests
 - [Deployment](docs/DEPLOYMENT.md): Supabase and Vercel setup, pre-launch and post-deploy checks, free-tier limits
 

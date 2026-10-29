@@ -137,6 +137,23 @@ Each delivery records who was on strike, at the other end and bowling. The score
 - **Effects.** Count-ups on the record tiles, confetti on a win and bursts on the live page are CSS keyframes plus a small IntersectionObserver, with no animation library. `effectsEnabled` turns them off when the phone asks for reduced motion, and numbers are always rendered in full first. A record number already on screen when the page loads keeps its value and pulses once; only a number scrolled into view later counts up from 0, so nobody sees a number they have read drop to 0.
 - **Badges.** Player totals add `hundreds`, `threeFors`, `fiveFors` and `hatTricks`. The player page shows a player's badges, and the team page's Milestones section lists every player who has one. Like fifties and hundreds, the three-for badge counts hauls of three or four wickets, so a five-for isn't counted twice. A hat-trick is three legal balls in a row by one bowler in one innings, each a wicket credited to the bowler. Wides and no-balls in between don't break the run; a run-out does. The match record stores `bowling.hatTricks` only when it is above 0, so records stay version 1 and older ones still read.
 
+## App frame
+- **Tab bar.** `TabBar` (`src/components/app/tab-bar.tsx`) lives once in the root layout. It has five slots: Home `/`, My team `/team`, a raised gold + for New match `/new`, Stats, and Account `/account`.
+  - `showsTabBar` (`src/lib/app/frame.ts`) hides it on `/new`, `/score`, `/team/join`, `/auth/*` and `/offline`, so match setup and scoring keep the whole screen.
+  - `tabForPath` marks the active tab: `/t/**` makes Stats active, and `/m/<code>` shows the bar with no tab active.
+  - Stats goes to your own team's page, otherwise the last team page you opened, otherwise `/team`. The codes live in `localStorage` (`cricket-scorer:my-team`, written by Home and `/team`; `cricket-scorer:last-team`, written by `/t/**`). A `cricket-scorer:team-codes` window event updates the tab on the same page.
+  - The bar never reads IndexedDB, so the public pages' bundles stay free of Dexie and supabase-js.
+  - `body:has([data-tab-bar])` sets `--tab-bar-space` and pads the page, so content never sits under the bar. `.app-screen` fills the height above it.
+- **Top bar.** Each screen renders `AppBar` (`src/components/app/app-bar.tsx`): navy `#1b2340`, the title in `<bdi>`, an optional back or close link, and actions on the right (`ShareLinkButton` shares the page link natively, falling back to copying it; `InstallIcon`). It's sticky and padded for the status-bar safe area.
+- **Navigation** stays as ordinary links, so the offline service worker works as before. Screen changes use cross-document View Transitions (`@view-transition { navigation: auto }`) where the browser supports them, off under reduced motion. `.press` gives tappable things a small press-down.
+- **Install.** One module-level listener keeps the browser's install prompt (`useInstallPrompt`) and feeds three shapes: a card on Home (Not now hides it for 14 days, `cricket-scorer:install-dismissed`), a row on Account, and an icon in the top bar. iPhone users get the Add to Home Screen steps in a bottom sheet.
+- **Full screen.** The manifest's `background_color` (splash) and the light `theme-color` are navy. iPhone uses `statusBarStyle: "black"`, so nothing sits under the status bar.
+- **Screens.**
+  - **Home:** your team badge in the top bar, **Live now** (in progress or at the innings break) and **Recent** match cards. A team match shows a W/L/T/NR pill from the team's side, using the summary's `winner`.
+  - **New match:** the top bar with a close link. The form itself is the scoring code's and is unchanged.
+  - **My team:** sections chosen by `?section=` (Squad, Fixtures, Results and Settings for an owner; Squad and Fixtures for a scorer). Switching uses client navigation, so back returns to the previous section. Players and fixtures are added and edited in bottom sheets (`form-sheet.tsx`).
+  - **Account:** a profile header with the Google name (never the email) or "Guest on this phone", the install row, and an Appearance switch (Auto, Light, Dark) on `next-themes`.
+
 ## Folders
 | Path | What |
 |---|---|
@@ -145,6 +162,7 @@ Each delivery records who was on strike, at the other end and bowling. The score
 | `src/lib/identity` | Guest session, Google sign-in and claim, take-over |
 | `src/lib/team` | Team logic: the per-match record, Player of the match points, seasons, totals and leaderboards (pure), plus the phone cache and outbox (`local.ts`), the RPC calls (`remote.ts`) and the public page parser (`page-data.ts`) |
 | `src/lib/live`, `src/lib/share`, `src/lib/i18n` | Viewer feed and merge, share text and summary, the message catalog |
+| `src/lib/app`, `src/components/app` | The app frame: tab and section rules, Stats target, install dismissal, Home sections and pills; the tab bar, top bar, share button and team badge |
 | `src/lib/brand`, `src/lib/media` | Team palette and picture addresses; picture crop and resize on the phone |
 | `src/components/art`, `src/components/effects` | Inline SVG cricket artwork shared by pages and posters; confetti, count-up and the reduced-motion check |
 | `src/server` | Server-only code: live reads, the cached team page read (`team.ts`) and image rendering |
