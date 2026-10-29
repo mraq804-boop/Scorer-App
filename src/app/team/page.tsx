@@ -18,7 +18,7 @@ import { SeasonsEditor } from "@/components/team/seasons-editor";
 import { SignInCard } from "@/components/team/sign-in-card";
 import { ShareLink } from "@/components/team/share-link";
 import { SquadEditor } from "@/components/team/squad-editor";
-import { TeamSectionTabs } from "@/components/team/team-section-tabs";
+import { SECTION_PANEL_ID, TeamSectionTabs, sectionTabId } from "@/components/team/team-section-tabs";
 import { Button } from "@/components/ui/button";
 import { MY_TEAM_KEY, rememberTeamCode } from "@/lib/app/frame";
 import { sectionFromQuery, sectionsFor } from "@/lib/app/team-sections";
@@ -151,18 +151,20 @@ function TeamSections({ client, team, onChanged }: { client: SupabaseClient; tea
     <>
       <TeamSummary team={team} />
       <TeamSectionTabs sections={sectionsFor(team.role)} current={section} onSelect={select} />
-      {section === "squad" && <SquadEditor client={client} team={team} onChanged={onChanged} />}
-      {section === "fixtures" && <FixturesEditor client={client} team={team} onChanged={onChanged} />}
-      {section === "results" && owner && <MatchOutcomes client={client} team={team} />}
-      {section === "settings" && owner && (
-        <>
-          <OwnerHeader client={client} team={team} onChanged={onChanged} />
-          <BrandEditor client={client} team={team} onChanged={onChanged} />
-          <PublicLink team={team} />
-          <SeasonsEditor client={client} team={team} onChanged={onChanged} />
-          <ScorersEditor client={client} team={team} />
-        </>
-      )}
+      <div role="tabpanel" id={SECTION_PANEL_ID} aria-labelledby={sectionTabId(section)} className="flex flex-col gap-5">
+        {section === "squad" && <SquadEditor client={client} team={team} onChanged={onChanged} />}
+        {section === "fixtures" && <FixturesEditor client={client} team={team} onChanged={onChanged} />}
+        {section === "results" && owner && <MatchOutcomes client={client} team={team} />}
+        {section === "settings" && owner && (
+          <>
+            <OwnerHeader client={client} team={team} onChanged={onChanged} />
+            <BrandEditor client={client} team={team} onChanged={onChanged} />
+            <PublicLink team={team} />
+            <SeasonsEditor client={client} team={team} onChanged={onChanged} />
+            <ScorersEditor client={client} team={team} />
+          </>
+        )}
+      </div>
     </>
   );
 }

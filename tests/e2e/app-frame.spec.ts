@@ -174,3 +174,16 @@ test("the close button on New match goes back to where you came from", async ({ 
   await page.getByRole("link", { name: "Close" }).click();
   await expect(page).toHaveURL(/\/account$/);
 });
+
+test("My team sections can be switched with the arrow keys", async ({ page }) => {
+  await signInOwner(page);
+  await page.goto("/team");
+  await expect(page.getByRole("region", { name: "Squad" })).toBeVisible();
+  await page.getByRole("tab", { name: "Squad" }).focus();
+  await page.keyboard.press("ArrowRight");
+  const fixtures = page.getByRole("tab", { name: "Fixtures" });
+  await expect(fixtures).toHaveAttribute("aria-selected", "true");
+  await expect(fixtures).toBeFocused();
+  await expect(page).toHaveURL(/section=fixtures/);
+  await expect(page.getByRole("tabpanel", { name: "Fixtures" })).toBeVisible();
+});
