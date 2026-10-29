@@ -1,11 +1,12 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { ChevronRight, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
+import { MatchActions } from "@/components/match-actions";
 import { StorageError } from "@/components/storage-error";
 import { OutcomePill } from "@/components/team-page/match-list";
-import { matchSection, teamPill } from "@/lib/app/home";
+import { matchSection, onlineCopy, teamPill } from "@/lib/app/home";
 import type { TeamPill } from "@/lib/app/home";
 import type { MatchOutcome } from "@/lib/i18n/team";
 import { t } from "@/lib/i18n";
@@ -40,7 +41,7 @@ function useStorageUnavailable(): boolean {
 }
 
 function SyncStatus({ match }: { match: LocalMatch }) {
-  const saved = match.syncedSeq < match.lastSeq;
+  const saved = onlineCopy(match) !== "full";
   return (
     <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-semibold">
       <span aria-hidden className={saved ? "size-2 rounded-full bg-haldi" : "size-2 rounded-full bg-success"} />
@@ -52,10 +53,10 @@ function SyncStatus({ match }: { match: LocalMatch }) {
 export function MatchCard({ match, live }: { match: LocalMatch; live: boolean }) {
   const pill = teamPill(match);
   return (
-    <li>
+    <li className="relative">
       <a
         href={`/score?m=${match.id}`}
-        className="press flex items-center gap-3 rounded-2xl border bg-card p-4 outline-none hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="press flex items-center gap-3 rounded-2xl border bg-card p-4 pe-14 outline-none hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50"
       >
         {pill !== null && <OutcomePill outcome={OUTCOMES[pill]} />}
         <span className="flex min-w-0 flex-1 flex-col gap-1">
@@ -79,8 +80,8 @@ export function MatchCard({ match, live }: { match: LocalMatch; live: boolean })
             {dateFormat.format(new Date(match.updatedAt))}
           </time>
         </span>
-        <ChevronRight className="size-5 shrink-0 text-muted-foreground rtl:rotate-180" aria-hidden />
       </a>
+      <MatchActions match={match} />
     </li>
   );
 }

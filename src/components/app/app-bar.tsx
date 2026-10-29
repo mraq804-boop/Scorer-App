@@ -23,7 +23,7 @@ export function AppBar({ title, heading = false, back, close, actions }: AppBarP
             <X className="size-6" aria-hidden />
           </BackLink>
         )}
-        <Title className="flex min-w-0 flex-1 items-center gap-2 text-lg font-bold">
+        <Title tabIndex={heading ? -1 : undefined} className="flex min-w-0 flex-1 items-center gap-2 text-lg font-bold outline-none">
           {typeof title === "string" ? <bdi className="truncate">{title}</bdi> : title}
         </Title>
         {actions !== undefined && <div className="-me-2 flex shrink-0 items-center gap-1">{actions}</div>}

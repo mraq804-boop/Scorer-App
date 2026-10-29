@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchSection, teamPill } from "@/lib/app/home";
+import { matchSection, onlineCopy, teamPill } from "@/lib/app/home";
 import type { LocalMatch } from "@/lib/local/db";
 
 type Status = LocalMatch["summary"]["status"];
@@ -35,5 +35,13 @@ describe("home sections", () => {
     expect(teamPill(match("complete", undefined))).toBeNull();
     expect(teamPill(match("complete", "A", null))).toBeNull();
     expect(teamPill(match("in_progress", "A"))).toBeNull();
+  });
+});
+
+describe("onlineCopy", () => {
+  it("says whether the server holds none, part or all of a match", () => {
+    expect(onlineCopy({ syncedSeq: 0, lastSeq: 12 })).toBe("none");
+    expect(onlineCopy({ syncedSeq: 7, lastSeq: 12 })).toBe("partial");
+    expect(onlineCopy({ syncedSeq: 12, lastSeq: 12 })).toBe("full");
   });
 });

@@ -19,3 +19,8 @@ export function teamPill(match: Pick<LocalMatch, "summary" | "team">): TeamPill 
   if (summary.winner === "tie") return "T";
   return summary.winner === team.side ? "W" : "L";
 }
+
+export function onlineCopy(match: Pick<LocalMatch, "syncedSeq" | "lastSeq">): "none" | "partial" | "full" {
+  if (match.syncedSeq >= match.lastSeq) return "full";
+  return match.syncedSeq === 0 ? "none" : "partial";
+}
