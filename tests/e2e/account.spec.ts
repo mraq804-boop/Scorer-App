@@ -5,7 +5,11 @@ test("account shows Google sign-in for guests", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "Sign in with Google to keep your matches" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign in with Google" })).toBeEnabled();
-  await expect(page.getByRole("link", { name: "Back" })).toHaveAttribute("href", "/");
+  await expect(page.getByText("Guest on this phone")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Tabs" }).getByRole("link", { name: "Account" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
 });
 
 test("account does not start a guest session or the sync loop", async ({ page }) => {

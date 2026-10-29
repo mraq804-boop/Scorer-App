@@ -59,9 +59,9 @@ test("reduced motion turns press feedback off", async ({ page }) => {
     });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
-  expect(Number.parseFloat(await pressDuration())).toBeLessThan(0.001);
+  await expect.poll(async () => Number.parseFloat(await pressDuration())).toBeLessThan(0.001);
   await page.emulateMedia({ reducedMotion: "no-preference" });
-  expect(Number.parseFloat(await pressDuration())).toBeGreaterThan(0.05);
+  await expect.poll(async () => Number.parseFloat(await pressDuration())).toBeGreaterThan(0.05);
 });
 
 test("the install card hides for 14 days after Not now", async ({ page }) => {
@@ -102,4 +102,18 @@ test("the last card clears the tab bar at 360 px", async ({ page }) => {
     const text = await tabs(page).getByRole("link", { name: label, exact: true }).locator("span").boundingBox();
     expect(text?.height ?? 0).toBeLessThan(20);
   }
+});
+
+test("Appearance switches to dark and stays dark", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/account");
+  await page.getByRole("radio", { name: "Dark" }).click();
+  await expect(page.locator("html")).toHaveClass(/\bdark\b/);
+  await page.reload();
+  await expect(page.locator("html")).toHaveClass(/\bdark\b/);
+});
+
+test("New match has a close button back to Home", async ({ page }) => {
+  await page.goto("/new");
+  await expect(page.getByRole("link", { name: "Close" })).toHaveAttribute("href", "/");
 });

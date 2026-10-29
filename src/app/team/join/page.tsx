@@ -1,9 +1,10 @@
 "use client";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ChevronLeft, LoaderCircle, Plus } from "lucide-react";
+import { LoaderCircle, Plus } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
+import { AppBar } from "@/components/app/app-bar";
 import { FormAlert } from "@/components/team/form";
 import { SignInCard } from "@/components/team/sign-in-card";
 import { Button } from "@/components/ui/button";
@@ -126,20 +127,13 @@ function JoinContent() {
 
 export default function JoinPage() {
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-5 px-4 pt-4 pb-8">
-      <header className="flex items-center gap-2">
-        <a
-          href="/"
-          aria-label={t("common.back")}
-          className="-ms-2 grid size-11 shrink-0 place-items-center rounded-full hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-        >
-          <ChevronLeft className="size-6 rtl:rotate-180" aria-hidden />
-        </a>
-        <h1 className="text-2xl font-bold">{t("join.title")}</h1>
-      </header>
-      <Suspense fallback={null}>
-        <JoinContent />
-      </Suspense>
-    </main>
+    <>
+      <AppBar title={t("join.title")} heading back="/" />
+      <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-5 px-4 pt-5 pb-8">
+        <Suspense fallback={null}>
+          <JoinContent />
+        </Suspense>
+      </main>
+    </>
   );
 }

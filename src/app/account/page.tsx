@@ -1,11 +1,17 @@
 "use client";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ChevronLeft, LoaderCircle, LogIn } from "lucide-react";
+import { LoaderCircle, LogIn } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import { Appearance } from "@/components/account/appearance";
 import { YourMatches } from "@/components/account/your-matches";
+import { AppBar } from "@/components/app/app-bar";
+import { Copyright } from "@/components/copyright";
+import { InstallRow } from "@/components/pwa/install-app";
 import { Button } from "@/components/ui/button";
+import { displayName } from "@/lib/app/account";
+import { initials } from "@/lib/brand";
 import { t } from "@/lib/i18n";
 import { startGoogleSignIn } from "@/lib/identity/google";
 import { getLocalDb } from "@/lib/local/db";
@@ -14,7 +20,7 @@ import { createSupabaseBrowser } from "@/lib/supabase/browser";
 type View =
   | { kind: "loading" }
   | { kind: "guest"; client: SupabaseClient }
-  | { kind: "member"; client: SupabaseClient; userId: string };
+  | { kind: "member"; client: SupabaseClient; userId: string; name: string | null };
 
 function useView(): View {
   const [view, setView] = useState<View>({ kind: "loading" });
@@ -28,7 +34,11 @@ function useView(): View {
       .getSession()
       .then(({ data }) => {
         const user = data.session?.user;
-        settle(user === undefined || user.is_anonymous === true ? { kind: "guest", client } : { kind: "member", client, userId: user.id });
+        settle(
+          user === undefined || user.is_anonymous === true
+            ? { kind: "guest", client }
+            : { kind: "member", client, userId: user.id, name: displayName(user.user_metadata) },
+        );
       })
       .catch(() => settle({ kind: "guest", client }));
     return () => {
@@ -83,6 +93,31 @@ function SignInPrompt({ client }: { client: SupabaseClient }) {
   );
 }
 
+function Profile({ view }: { view: Exclude<View, { kind: "loading" }> }) {
+  const name = view.kind === "member" ? view.name : null;
+  const title = view.kind === "guest" ? t("account.guestName") : (name ?? t("account.googleUser"));
+  return (
+    <section className="flex items-center gap-4 rounded-3xl bg-[#1b2340] p-5 text-white">
+      <span className="grid size-14 shrink-0 place-items-center rounded-full bg-haldi text-xl font-extrabold text-[#412402]">
+        {name === null ? <LogIn className="size-6" aria-hidden /> : initials(name)}
+      </span>
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <bdi className="truncate text-xl font-bold">{title}</bdi>
+        {name !== null && <span className="text-sm text-white/70">{t("account.googleUser")}</span>}
+      </span>
+    </section>
+  );
+}
+
+function Loading() {
+  return (
+    <div aria-busy="true" className="flex flex-col gap-4">
+      <div className="h-24 animate-pulse rounded-3xl bg-muted" />
+      <div className="h-40 animate-pulse rounded-2xl bg-muted" />
+    </div>
+  );
+}
+
 function AccountContent() {
   const view = useView();
   useReloadOnRestore();
@@ -94,28 +129,27 @@ function AccountContent() {
           {t("account.authFailed")}
         </p>
       )}
+      {view.kind === "loading" ? <Loading /> : <Profile view={view} />}
       {view.kind === "guest" && <SignInPrompt client={view.client} />}
       {view.kind === "member" && <YourMatches client={view.client} userId={view.userId} />}
+      <section className="flex flex-col divide-y overflow-hidden rounded-2xl border bg-card">
+        <InstallRow />
+        <Appearance />
+      </section>
     </>
   );
 }
 
 export default function AccountPage() {
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-5 px-4 pt-4 pb-8">
-      <header className="flex items-center gap-2">
-        <a
-          href="/"
-          aria-label={t("common.back")}
-          className="-ms-2 grid size-11 shrink-0 place-items-center rounded-full hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-        >
-          <ChevronLeft className="size-6 rtl:rotate-180" aria-hidden />
-        </a>
-        <h1 className="text-2xl font-bold">{t("account.title")}</h1>
-      </header>
-      <Suspense fallback={null}>
-        <AccountContent />
-      </Suspense>
-    </main>
+    <>
+      <AppBar title={t("account.title")} heading />
+      <main className="app-screen mx-auto flex w-full max-w-md flex-col gap-5 px-4 pt-5 pb-8">
+        <Suspense fallback={null}>
+          <AccountContent />
+        </Suspense>
+        <Copyright />
+      </main>
+    </>
   );
 }
