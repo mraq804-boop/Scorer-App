@@ -197,7 +197,7 @@ html {
 }
 
 body:has([data-tab-bar]) {
-  --tab-bar-space: calc(4.25rem + env(safe-area-inset-bottom));
+  --tab-bar-space: calc(5rem + env(safe-area-inset-bottom));
   padding-bottom: var(--tab-bar-space);
 }
 

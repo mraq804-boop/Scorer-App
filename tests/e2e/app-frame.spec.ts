@@ -187,3 +187,28 @@ test("My team sections can be switched with the arrow keys", async ({ page }) =>
   await expect(page).toHaveURL(/section=fixtures/);
   await expect(page.getByRole("tabpanel", { name: "Fixtures" })).toBeVisible();
 });
+
+test("the phone's status bar is navy in light and dark mode", async ({ page }) => {
+  await page.goto("/");
+  const colours = await page.locator('meta[name="theme-color"]').evaluateAll((metas) => metas.map((meta) => meta.getAttribute("content")));
+  expect(colours.length).toBeGreaterThan(0);
+  expect(new Set(colours)).toEqual(new Set(["#1b2340"]));
+});
+
+test("Account shows its loading placeholder from the first paint", async ({ request }) => {
+  const html = await (await request.get("/account")).text();
+  expect(html).toContain('aria-busy="true"');
+});
+
+test("nothing on Home scrolls under the raised + on a small phone", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 640 });
+  for (let match = 0; match < 4; match += 1) await startMatch(page);
+  await page.goto("/");
+  await expect(page.getByRole("region", { name: "Live now" }).getByRole("listitem")).toHaveCount(4);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const plus = await tabs(page).getByRole("link", { name: "New match" }).boundingBox();
+  const bar = await tabs(page).boundingBox();
+  const main = await page.locator("main").boundingBox();
+  if (plus === null || bar === null || main === null) throw new Error("missing boxes");
+  expect(main.y + main.height).toBeLessThanOrEqual(Math.min(plus.y, bar.y));
+});

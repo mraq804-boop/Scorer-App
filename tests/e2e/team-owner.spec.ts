@@ -359,3 +359,15 @@ test("tapping outside a half-filled sheet keeps it and what was typed", async ({
   await expect(sheet).toBeVisible();
   await expect(sheet.getByLabel("Opponent")).toHaveValue("Hawks");
 });
+
+test("a scorer can't open the owner's Settings or Results", async ({ page }) => {
+  await signIn(page, team({ role: "scorer" }));
+  for (const section of ["settings", "results"]) {
+    await page.goto(`/team?section=${section}`);
+    await expect(page.getByRole("region", { name: "Squad" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Settings" })).toHaveCount(0);
+    await expect(page.getByRole("tab", { name: "Results" })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "Seasons" })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "Scorers" })).toHaveCount(0);
+  }
+});

@@ -1,7 +1,7 @@
 "use client";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { LoaderCircle, LogIn } from "lucide-react";
+import { LoaderCircle, LogIn, User } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { Appearance } from "@/components/account/appearance";
@@ -99,7 +99,7 @@ function Profile({ view }: { view: Exclude<View, { kind: "loading" }> }) {
   return (
     <section className="flex items-center gap-4 rounded-3xl bg-[#1b2340] p-5 text-white">
       <span className="grid size-14 shrink-0 place-items-center rounded-full bg-haldi text-xl font-extrabold text-[#412402]">
-        {name === null ? <LogIn className="size-6" aria-hidden /> : initials(name)}
+        {name !== null ? initials(name) : view.kind === "guest" ? <LogIn className="size-6" aria-hidden /> : <User className="size-6" aria-hidden />}
       </span>
       <span className="flex min-w-0 flex-col gap-0.5">
         <bdi className="truncate text-xl font-bold">{title}</bdi>
@@ -145,7 +145,7 @@ export default function AccountPage() {
     <>
       <AppBar title={t("account.title")} heading />
       <main className="app-screen mx-auto flex w-full max-w-md flex-col gap-5 px-4 pt-5 pb-8">
-        <Suspense fallback={null}>
+        <Suspense fallback={<Loading />}>
           <AccountContent />
         </Suspense>
         <Copyright />

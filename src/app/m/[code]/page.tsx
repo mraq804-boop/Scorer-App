@@ -40,7 +40,7 @@ export default async function LivePage({ params }: PageProps<"/m/[code]">) {
           </>
         }
       />
-      <main className="app-screen mx-auto flex w-full max-w-md flex-col px-4 pb-safe">
+      <main className="app-screen mx-auto flex w-full max-w-md flex-col px-4">
         <LiveView key={live.match.id} match={live.match} initialEvents={live.events} />
         <Copyright />
       </main>

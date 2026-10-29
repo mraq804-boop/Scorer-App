@@ -134,6 +134,7 @@ function TeamSummary({ team }: { team: CachedTeam }) {
 function Loading() {
   return (
     <div aria-busy="true" className="flex flex-col gap-4">
+      <span className="sr-only">{t("team.loading")}</span>
       <div className="h-14 animate-pulse rounded-2xl bg-muted" />
       <div className="h-12 animate-pulse rounded-2xl bg-muted" />
       <div className="h-48 animate-pulse rounded-2xl bg-muted" />
