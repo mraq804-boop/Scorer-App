@@ -62,3 +62,12 @@ export function rememberTeamCode(key: string, code: string | null): void {
   }
   window.dispatchEvent(new Event(TEAM_CODES_EVENT));
 }
+
+export function goesBack(referrer: string, origin: string, historyLength: number): boolean {
+  if (historyLength < 2 || referrer === "") return false;
+  try {
+    return new URL(referrer).origin === origin;
+  } catch {
+    return false;
+  }
+}

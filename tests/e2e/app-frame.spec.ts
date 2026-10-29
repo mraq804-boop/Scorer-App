@@ -166,3 +166,11 @@ test("Home has a main heading", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "Cricket Scorer" })).toBeVisible();
 });
+
+test("the close button on New match goes back to where you came from", async ({ page }) => {
+  await page.goto("/account");
+  await tabs(page).getByRole("link", { name: "New match" }).click();
+  await expect(page).toHaveURL(/\/new$/);
+  await page.getByRole("link", { name: "Close" }).click();
+  await expect(page).toHaveURL(/\/account$/);
+});

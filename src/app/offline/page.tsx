@@ -11,7 +11,7 @@ export default function OfflinePage() {
   return (
     <>
       <AppBar title={t("app.name")} />
-      <main className="grid min-h-[calc(100dvh-3.5rem)] place-items-center px-6">
+      <main data-offline-page className="grid min-h-[calc(100dvh-3.5rem)] place-items-center px-6">
         <div className="flex max-w-sm flex-col items-center text-center">
           <span className="grid size-14 place-items-center rounded-full bg-accent text-accent-foreground">
             <WifiOff className="size-7" aria-hidden />

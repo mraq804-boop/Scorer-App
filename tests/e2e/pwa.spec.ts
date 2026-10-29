@@ -37,10 +37,18 @@ test("pages outside the shell fall back to the offline screen", async ({ page, c
   await page.goto("/");
   await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
 
+  const hydrationErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error" && /hydrat/i.test(message.text())) hydrationErrors.push(message.text());
+  });
+
   await context.setOffline(true);
   await page.goto("/account");
   await expect(page.getByRole("heading", { name: "You're offline" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+  await page.waitForTimeout(500);
+  await expect(page.getByRole("navigation", { name: "Tabs" })).toHaveCount(0);
+  expect(hydrationErrors).toEqual([]);
   await context.setOffline(false);
 });
 

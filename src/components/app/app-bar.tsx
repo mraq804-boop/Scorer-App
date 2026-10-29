@@ -1,6 +1,7 @@
 import { ChevronLeft, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { t } from "@/lib/i18n";
+import { BackLink } from "./back-link";
 
 type AppBarProps = { title: ReactNode; heading?: boolean; back?: string; close?: string; actions?: ReactNode };
 
@@ -13,14 +14,14 @@ export function AppBar({ title, heading = false, back, close, actions }: AppBarP
     <header className="sticky top-0 z-30 bg-[#1b2340] pt-[env(safe-area-inset-top)] text-white">
       <div className="mx-auto flex min-h-14 w-full max-w-md items-center gap-2 px-4">
         {back !== undefined && (
-          <a href={back} aria-label={t("common.back")} className={ICON_LINK}>
+          <BackLink href={back} label={t("common.back")} className={ICON_LINK}>
             <ChevronLeft className="size-6 rtl:rotate-180" aria-hidden />
-          </a>
+          </BackLink>
         )}
         {close !== undefined && (
-          <a href={close} aria-label={t("app.close")} className={ICON_LINK}>
+          <BackLink href={close} label={t("app.close")} className={ICON_LINK}>
             <X className="size-6" aria-hidden />
-          </a>
+          </BackLink>
         )}
         <Title className="flex min-w-0 flex-1 items-center gap-2 text-lg font-bold">
           {typeof title === "string" ? <bdi className="truncate">{title}</bdi> : title}

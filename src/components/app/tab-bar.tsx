@@ -27,6 +27,10 @@ function useStatsHref(): string {
   );
 }
 
+function onOfflinePage(): boolean {
+  return typeof document !== "undefined" && document.querySelector("[data-offline-page]") !== null;
+}
+
 type Tab = { key: Exclude<TabKey, "new">; href: string; label: MessageKey; icon: LucideIcon };
 
 function TabLink({ tab, active }: { tab: Tab; active: boolean }) {
@@ -49,7 +53,7 @@ function TabLink({ tab, active }: { tab: Tab; active: boolean }) {
 export function TabBar() {
   const pathname = usePathname();
   const stats = useStatsHref();
-  if (!showsTabBar(pathname)) return null;
+  if (!showsTabBar(pathname) || onOfflinePage()) return null;
   const active = tabForPath(pathname);
   const left: Tab[] = [
     { key: "home", href: "/", label: "tabs.home", icon: Home },
