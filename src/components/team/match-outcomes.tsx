@@ -2,7 +2,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Trash2 } from "lucide-react";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ShareImageLink } from "@/components/share/share-image-link";
 import { Button } from "@/components/ui/button";
@@ -122,6 +122,7 @@ export function MatchOutcomes({ client, team, onChanged }: MatchOutcomesProps) {
   const headingId = useId();
   const [load, setLoad] = useState<Load>({ kind: "loading" });
   const [deleting, setDeleting] = useState<TeamPageMatch | null>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -179,15 +180,20 @@ export function MatchOutcomes({ client, team, onChanged }: MatchOutcomesProps) {
   };
 
   const onDeleted = async (code: string) => {
+    setLoad((current) =>
+      current.kind === "ready"
+        ? { kind: "ready", page: { ...current.page, matches: current.page.matches.filter((match) => match.code !== code) } }
+        : current,
+    );
     await removeLocalMatch(getLocalDb(), code).catch(() => false);
-    await reload();
     toast.success(t("team.outcomes.deleted"));
-    await onChanged();
+    void reload();
+    void onChanged();
   };
 
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
-      <h2 id={headingId} className="text-lg font-bold">
+      <h2 id={headingId} ref={headingRef} tabIndex={-1} className="text-lg font-bold outline-none">
         {t("team.outcomes.title")}
       </h2>
       {load.kind === "loading" && <p className="text-sm text-muted-foreground">{t("team.loading")}</p>}
@@ -218,6 +224,7 @@ export function MatchOutcomes({ client, team, onChanged }: MatchOutcomesProps) {
           onConfirm={() => deleteMatch(client, deleting.code)}
           onDone={() => onDeleted(deleting.code)}
           onClose={() => setDeleting(null)}
+          fallbackFocus={() => headingRef.current?.focus()}
         />
       )}
     </section>

@@ -358,7 +358,6 @@ describe("backfillWinners", () => {
   });
 });
 
-
 describe("removeLocalMatch", () => {
   it("deletes the match with that code and only its events", async () => {
     const db = freshDb();

@@ -278,6 +278,14 @@ test("the owner deletes a match from Results, and it leaves this phone too", asy
   const results = page.getByRole("region", { name: "Results" });
   await expect(results.getByRole("listitem")).toContainText("Lions won by 20 runs");
   const teamLoads = account.myTeam;
+  let release = () => {};
+  const teamRefresh = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/rest/v1/rpc/get_my_team", async (route) => {
+    await teamRefresh;
+    return route.fallback();
+  });
 
   await results.getByRole("button", { name: "Delete Lions vs Kites" }).click();
   const dialog = page.getByRole("alertdialog");
@@ -287,11 +295,13 @@ test("the owner deletes a match from Results, and it leaves this phone too", asy
 
   await expect.poll(() => deleted).toEqual([{ p_code: code }]);
   await expect(dialog).toHaveCount(0);
+  await expect(results.getByRole("heading", { name: "Results" })).toBeFocused();
   await expect(page.getByText("Match deleted")).toBeVisible();
   await expect(results.getByRole("listitem")).toHaveCount(0);
   await expect(results).toContainText("Team matches you score show up here.");
   expect(await readStore(page, "matches")).toEqual([]);
   expect(await readStore(page, "events")).toEqual([]);
+  release();
   await expect.poll(() => account.myTeam).toBeGreaterThan(teamLoads);
 
   await page.goto("/");
@@ -318,9 +328,29 @@ test("a failed delete keeps the match here and on this phone, and says why", asy
   await expect(dialog.getByRole("alert")).toHaveText("Only the team owner can change this.");
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toHaveCount(0);
+  await expect(results.getByRole("button", { name: "Delete Lions vs Kites" })).toBeFocused();
   await expect(results.getByRole("listitem")).toContainText("Lions won by 20 runs");
   expect((await readStore<{ code: string }>(page, "matches")).map((match) => match.code)).toEqual([code]);
   expect((await readStore(page, "events")).length).toBeGreaterThan(0);
+});
+
+test("a deleted match leaves Results even when the list can't refresh", async ({ page }) => {
+  await signIn(page, team());
+  const deleted = await stubRpc(page, "delete_match", null);
+  await page.route("**/rest/v1/rpc/get_team_page", (route) => {
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
+    if (deleted.length === 0) return fulfillJson(route, teamPage);
+    return route.fulfill({ status: 503, headers: CORS, contentType: "application/json", body: JSON.stringify({ message: "unavailable" }) });
+  });
+  await page.goto("/team?section=results");
+  const results = page.getByRole("region", { name: "Results" });
+  await expect(results.getByRole("listitem")).toContainText("Lions won by 20 runs");
+
+  await results.getByRole("button", { name: "Delete Lions vs Kites" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Delete", exact: true }).click();
+
+  await expect(page.getByText("Match deleted")).toBeVisible();
+  await expect(results.getByRole("listitem")).toHaveCount(0);
 });
 
 test("an owner creates a scorer invite to share on WhatsApp", async ({ page }) => {
@@ -340,18 +370,20 @@ test("an owner creates a scorer invite to share on WhatsApp", async ({ page }) =
 test("the owner sees each scorer's name and removes the right one", async ({ page }) => {
   await signIn(page, team());
   const { id, code, name, homeGround, timeZone, role, squad, seasons, fixtures } = team();
-  await stubRpc(page, "get_my_team", {
-    role,
-    team: { id, code, name, homeGround, timeZone },
-    squad,
-    seasons,
-    fixtures,
-    scorers: [
-      { userId: "u-bilal", name: "Bilal Ahmed", addedAt: "2026-10-27T08:00:00.000Z" },
-      { userId: "u-nameless", name: null, addedAt: "2026-10-28T08:00:00.000Z" },
-    ],
-  });
+  const bilal = { userId: "u-bilal", name: "Bilal Ahmed", addedAt: "2026-10-27T08:00:00.000Z" };
+  const nameless = { userId: "u-nameless", name: null, addedAt: "2026-10-28T08:00:00.000Z" };
   const removed = await stubRpc(page, "remove_scorer", null);
+  await page.route("**/rest/v1/rpc/get_my_team", (route) => {
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
+    return fulfillJson(route, {
+      role,
+      team: { id, code, name, homeGround, timeZone },
+      squad,
+      seasons,
+      fixtures,
+      scorers: removed.length === 0 ? [bilal, nameless] : [nameless],
+    });
+  });
   await page.goto("/team?section=settings");
   const scorers = page.getByRole("region", { name: "Scorers" });
 
@@ -364,6 +396,8 @@ test("the owner sees each scorer's name and removes the right one", async ({ pag
   await dialog.getByRole("button", { name: "Remove", exact: true }).click();
 
   await expect.poll(() => removed).toEqual([{ p_user: "u-bilal" }]);
+  await expect(scorers.getByRole("listitem")).toHaveCount(1);
+  await expect(scorers.getByRole("heading", { name: "Scorers" })).toBeFocused();
 });
 
 test("the owner edits the team's name, home ground and time zone", async ({ page }) => {

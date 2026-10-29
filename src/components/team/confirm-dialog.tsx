@@ -22,11 +22,19 @@ type ConfirmDialogProps = {
   onConfirm: () => Promise<TeamResult<void>>;
   onDone: () => Promise<void>;
   onClose: () => void;
+  fallbackFocus?: () => void;
 };
 
-export function ConfirmDialog({ title, body, confirmLabel, onConfirm, onDone, onClose }: ConfirmDialogProps) {
+export function ConfirmDialog({ title, body, confirmLabel, onConfirm, onDone, onClose, fallbackFocus }: ConfirmDialogProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  const [opener] = useState(() => (document.activeElement instanceof HTMLElement ? document.activeElement : null));
+
+  const restoreFocus = (event: Event) => {
+    event.preventDefault();
+    if (opener?.isConnected) opener.focus();
+    else fallbackFocus?.();
+  };
 
   const confirm = async () => {
     setBusy(true);
@@ -43,7 +51,7 @@ export function ConfirmDialog({ title, body, confirmLabel, onConfirm, onDone, on
 
   return (
     <AlertDialog open onOpenChange={(open) => !open && !busy && onClose()}>
-      <AlertDialogContent>
+      <AlertDialogContent onCloseAutoFocus={restoreFocus}>
         <AlertDialogHeader>
           <AlertDialogTitle className="min-w-0 truncate text-lg font-bold">
             <bdi>{title}</bdi>

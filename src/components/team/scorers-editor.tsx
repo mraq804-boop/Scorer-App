@@ -2,7 +2,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { LoaderCircle, UserPlus } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { t } from "@/lib/i18n";
 import type { CachedTeam } from "@/lib/local/db";
@@ -23,9 +23,15 @@ function scorerName(scorer: Scorer): string {
   return scorer.name ?? t("team.scorers.unnamed");
 }
 
-type RemoveDialogProps = { client: SupabaseClient; scorer: Scorer; onRemoved: () => Promise<void>; onClose: () => void };
+type RemoveDialogProps = {
+  client: SupabaseClient;
+  scorer: Scorer;
+  onRemoved: () => Promise<void>;
+  onClose: () => void;
+  fallbackFocus: () => void;
+};
 
-function RemoveDialog({ client, scorer, onRemoved, onClose }: RemoveDialogProps) {
+function RemoveDialog({ client, scorer, onRemoved, onClose, fallbackFocus }: RemoveDialogProps) {
   return (
     <ConfirmDialog
       title={t("team.scorers.removeTitle", { name: scorerName(scorer) })}
@@ -34,6 +40,7 @@ function RemoveDialog({ client, scorer, onRemoved, onClose }: RemoveDialogProps)
       onConfirm={() => removeScorer(client, scorer.userId)}
       onDone={onRemoved}
       onClose={onClose}
+      fallbackFocus={fallbackFocus}
     />
   );
 }
@@ -45,6 +52,7 @@ export function ScorersEditor({ client, team }: ScorersEditorProps) {
   const [inviteError, setInviteError] = useState<string | undefined>(undefined);
   const [inviting, setInviting] = useState(false);
   const [removing, setRemoving] = useState<Scorer | null>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -76,7 +84,7 @@ export function ScorersEditor({ client, team }: ScorersEditorProps) {
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
       <div className="flex flex-col gap-0.5">
-        <h2 id={headingId} className="text-lg font-bold">
+        <h2 id={headingId} ref={headingRef} tabIndex={-1} className="text-lg font-bold outline-none">
           {t("team.scorers.title")}
         </h2>
         <p className="text-sm text-muted-foreground">{t("team.scorers.body")}</p>
@@ -130,7 +138,13 @@ export function ScorersEditor({ client, team }: ScorersEditorProps) {
       )}
       {inviteError !== undefined && <FormAlert message={inviteError} />}
       {removing !== null && (
-        <RemoveDialog client={client} scorer={removing} onRemoved={reload} onClose={() => setRemoving(null)} />
+        <RemoveDialog
+          client={client}
+          scorer={removing}
+          onRemoved={reload}
+          onClose={() => setRemoving(null)}
+          fallbackFocus={() => headingRef.current?.focus()}
+        />
       )}
     </section>
   );
