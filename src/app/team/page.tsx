@@ -247,12 +247,7 @@ function TeamBody({ view, retry, refresh }: TeamBodyProps) {
         </>
       );
     case "team":
-      return (
-        <>
-          {view.team.role === "scorer" && <EmailInvites client={view.client} onJoined={() => refresh(view.client)} />}
-          <TeamSections client={view.client} team={view.team} onChanged={() => refresh(view.client)} />
-        </>
-      );
+      return <TeamSections client={view.client} team={view.team} onChanged={() => refresh(view.client)} />;
   }
 }
 

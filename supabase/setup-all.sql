@@ -1609,7 +1609,8 @@ drop function public.accept_email_invites();
 
 alter table public.squad_scorer_emails drop constraint squad_scorer_emails_email_check;
 alter table public.squad_scorer_emails add constraint squad_scorer_emails_email_check
-  check (char_length(email) <= 254 and email ~ '^[a-z0-9._+-]+@[a-z0-9-]+(\.[a-z0-9-]+)+$');
+  check (char_length(email) <= 254 and email ~ '^[a-z0-9._+''-]+@[a-z0-9-]+(\.[a-z0-9-]+)+$');
+alter table public.squad_scorer_emails add column accepted_by uuid references auth.users on delete set null;
 
 create or replace function public.verified_google_users(p_email text) returns setof uuid
 language sql stable security definer set search_path = '' as $$
@@ -1637,13 +1638,13 @@ declare
   normal text := nullif(lower(btrim(p_email)), '');
   allowed boolean := coalesce(p_can_score, false);
   previous text;
-  was_allowed boolean;
+  joiner uuid;
 begin
   tid := public.lock_owned_team();
   if not exists (select 1 from public.squad_players p where p.team_id = tid and p.id = p_player) then
     raise exception 'not_team_owner';
   end if;
-  if normal is not null and (char_length(normal) > 254 or normal !~ '^[a-z0-9._+-]+@[a-z0-9-]+(\.[a-z0-9-]+)+$') then
+  if normal is not null and (char_length(normal) > 254 or normal !~ '^[a-z0-9._+''-]+@[a-z0-9-]+(\.[a-z0-9-]+)+$') then
     raise exception 'invalid_email';
   end if;
   if normal is not null and exists (
@@ -1652,11 +1653,10 @@ begin
     raise exception 'email_taken';
   end if;
 
-  select e.email, e.can_score into previous, was_allowed
+  select e.email, e.accepted_by into previous, joiner
   from public.squad_scorer_emails e where e.team_id = tid and e.player_id = p_player;
-  if was_allowed and (previous is distinct from normal or not allowed) then
-    delete from public.team_scorers s
-    where s.team_id = tid and s.user_id in (select public.verified_google_users(previous));
+  if joiner is not null and (previous is distinct from normal or not allowed) then
+    delete from public.team_scorers s where s.team_id = tid and s.user_id = joiner;
   end if;
 
   if normal is null then
@@ -1665,7 +1665,37 @@ begin
   end if;
   insert into public.squad_scorer_emails as e (team_id, player_id, email, can_score)
   values (tid, p_player, normal, allowed)
-  on conflict (team_id, player_id) do update set email = excluded.email, can_score = excluded.can_score, updated_at = now();
+  on conflict (team_id, player_id) do update set
+    email = excluded.email,
+    can_score = excluded.can_score,
+    accepted_by = case when e.email = excluded.email and excluded.can_score then e.accepted_by end,
+    updated_at = now();
+end $$;
+
+create or replace function public.get_scorer_emails() returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  tid uuid;
+begin
+  if (select (auth.jwt() ->> 'is_anonymous')::boolean) is not true then
+    select t.id into tid from public.teams t where t.owner_id = (select auth.uid());
+  end if;
+  if tid is null then
+    raise exception 'not_team_owner';
+  end if;
+  return coalesce(
+    (select jsonb_agg(jsonb_build_object(
+              'playerId', e.player_id,
+              'email', e.email,
+              'canScore', e.can_score,
+              'joined', e.accepted_by is not null and exists (
+                select 1 from public.team_scorers s where s.team_id = tid and s.user_id = e.accepted_by
+              )
+            ) order by e.updated_at, e.player_id)
+     from public.squad_scorer_emails e
+     where e.team_id = tid),
+    '[]'::jsonb
+  );
 end $$;
 
 create or replace function public.get_email_invites() returns jsonb
@@ -1709,6 +1739,8 @@ begin
   insert into public.team_scorers as s (team_id, user_id, display_name)
   values (tid, uid, public.google_display_name(uid))
   on conflict (team_id, user_id) do update set display_name = coalesce(excluded.display_name, s.display_name);
+  update public.squad_scorer_emails e set accepted_by = uid
+  where e.team_id = tid and e.can_score and e.email in (select public.my_google_emails());
   return p_code;
 end $$;
 
@@ -1719,10 +1751,8 @@ declare
 begin
   tid := public.lock_owned_team();
   delete from public.team_scorers s where s.team_id = tid and s.user_id = p_user;
-  update public.squad_scorer_emails e set can_score = false, updated_at = now()
-  where e.team_id = tid
-    and e.can_score
-    and e.email in (select i.email from auth.identities i where i.user_id = p_user and i.provider = 'google');
+  update public.squad_scorer_emails e set can_score = false, accepted_by = null, updated_at = now()
+  where e.team_id = tid and e.accepted_by = p_user;
 end $$;
 
 revoke execute on function

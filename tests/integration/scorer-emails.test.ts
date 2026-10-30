@@ -172,12 +172,23 @@ describe("scorer emails on squad players", () => {
     expect(await scorers(lions)).toContain(LINKED.sub);
   });
 
+  it("can't be used to confirm which email a scorer who joined by link uses", async () => {
+    await allow(OWNER, usman, "linked@gmail.com", true);
+    expect(await call(OWNER, "get_scorer_emails")).toContainEqual({ playerId: usman, email: "linked@gmail.com", canScore: true, joined: false });
+
+    await call(OWNER, "remove_scorer", [LINKED.sub]);
+    expect(await call(OWNER, "get_scorer_emails")).toContainEqual({ playerId: usman, email: "linked@gmail.com", canScore: true, joined: false });
+    await allow(OWNER, usman, null, false);
+  });
+
   it("only the owner sets and reads emails, and refuses bad or repeated ones", async () => {
     await allow(OWNER, ali, "friend@gmail.com", true);
     await expectDbError(allow(FRIEND, ali, "x@gmail.com", true), /not_team_owner/);
     await expectDbError(allow(GUEST, ali, "x@gmail.com", true), /not_team_owner/);
     await expectDbError(allow(OTHER_OWNER, ali, "x@gmail.com", true), /not_team_owner/);
     await expectDbError(allow(OWNER, crypto.randomUUID(), "x@gmail.com", true), /not_team_owner/);
+    await allow(OWNER, usman, "o'brien@club.ie", false);
+    await allow(OWNER, usman, null, false);
     for (const bad of ["not-an-email", "ali?cc=x@gmail.com", "ali,bob@gmail.com", "ali%40@gmail.com", `${"a".repeat(250)}@gmail.com`]) {
       await expectDbError(allow(OWNER, usman, bad, true), /invalid_email/);
     }

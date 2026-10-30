@@ -299,10 +299,10 @@ test("a full team's invite says so, and No thanks hides it on this phone", async
   await expect(invite).toHaveCount(0);
 });
 
-test("a scorer never sees or loads squad emails", async ({ page }) => {
+test("a scorer never sees or loads squad emails or email invites", async ({ page }) => {
   const loads: string[] = [];
   page.on("request", (request) => {
-    if (request.url().endsWith("/rpc/get_scorer_emails")) loads.push(request.url());
+    if (/\/rpc\/get_(scorer_emails|email_invites)$/.test(request.url())) loads.push(request.url());
   });
   await signIn(page, team({ role: "scorer" }));
   await page.goto("/team");

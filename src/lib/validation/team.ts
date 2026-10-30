@@ -169,7 +169,7 @@ export function validatePlayer(input: SquadPlayer): Validated<SquadPlayer, Playe
 }
 
 const EMAIL_MAX_LENGTH = 254;
-const EMAIL = /^[a-z0-9._+-]+@[a-z0-9-]+(\.[a-z0-9-]+)+$/;
+const EMAIL = /^[a-z0-9._+'-]+@[a-z0-9-]+(\.[a-z0-9-]+)+$/;
 
 export function validateScorerEmail(input: string): Validated<string | null, ScorerEmailField> {
   const email = input.trim().toLowerCase();

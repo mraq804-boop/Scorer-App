@@ -119,6 +119,7 @@ describe("validateScorerEmail", () => {
     expect(validateScorerEmail("ali,bob@gmail.com")).toEqual(refused);
     expect(validateScorerEmail("ali%40@gmail.com")).toEqual(refused);
     expect(validateScorerEmail("ali.khan+cricket@my-club.co.uk")).toEqual({ ok: true, value: "ali.khan+cricket@my-club.co.uk" });
+    expect(validateScorerEmail("O'Brien@Club.ie")).toEqual({ ok: true, value: "o'brien@club.ie" });
     expect(validateScorerEmail(`${"a".repeat(250)}@gmail.com`)).toEqual(refused);
   });
 });
