@@ -12,6 +12,7 @@ export type Validated<T, F extends string> = { ok: true; value: T } | { ok: fals
 
 export type TeamField = "name" | "homeGround" | "timeZone";
 export type PlayerField = "name";
+export type ScorerEmailField = "email";
 export type SeasonField = "name" | "startsOn" | "endsOn";
 export type FixtureField = "day" | "time" | "opponent" | "ground" | "overs" | "notes";
 
@@ -165,6 +166,16 @@ export function validateTeam(input: { name: string; homeGround: string; timeZone
 
 export function validatePlayer(input: SquadPlayer): Validated<SquadPlayer, PlayerField> {
   return validate(playerSchema, input);
+}
+
+const EMAIL_MAX_LENGTH = 254;
+const EMAIL = /^[a-z0-9._+-]+@[a-z0-9-]+(\.[a-z0-9-]+)+$/;
+
+export function validateScorerEmail(input: string): Validated<string | null, ScorerEmailField> {
+  const email = input.trim().toLowerCase();
+  if (email === "") return { ok: true, value: null };
+  if (email.length > EMAIL_MAX_LENGTH || !EMAIL.test(email)) return { ok: false, errors: { email: t("team.error.email") } };
+  return { ok: true, value: email };
 }
 
 export function validateSeason(input: Season): Validated<Season, SeasonField> {

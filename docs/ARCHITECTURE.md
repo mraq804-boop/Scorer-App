@@ -110,9 +110,9 @@ Each delivery records who was on strike, at the other end and bowling. The score
   - Matches in progress show as Live and count nowhere until they finish or are marked No result.
   - A match counts in the season whose dates include the day it was played, in the team's time zone.
 - **RPCs.** All are security definer with `search_path = ''`, and `anon` and `authenticated` have no table writes.
-  - Owner only: `update_team` (name, home ground, time zone), `upsert_season`, `upsert_fixture`, `set_potm`, `set_result_override`, `delete_match`, `create_scorer_invite`, `remove_scorer`, and the team look: `set_team_colour`, `set_team_logo`, `set_player_photo`.
+  - Owner only: `update_team` (name, home ground, time zone), `upsert_season`, `upsert_fixture`, `set_potm`, `set_result_override`, `delete_match`, `create_scorer_invite`, `remove_scorer`, `set_player_scorer_email`, `get_scorer_emails`, and the team look: `set_team_colour`, `set_team_logo`, `set_player_photo`.
   - Owner or scorer: `upsert_squad_players` (a scorer can add players but not change them) and `get_my_team`.
-  - Google users: `accept_scorer_invite`.
+  - Google users: `accept_scorer_invite`, `get_email_invites` and `accept_email_invite`.
   - Anyone: `get_team_page(code)`. It returns the team (with its colour and logo version), squad (with photo versions), seasons, fixtures without notes, and up to 500 link-visible team matches with their record, Player of the match and No result. It never returns events. `get_live_match(code)` adds a `team` block for a team match: code, name, colour, logo version, side, Player of the match, No result, the XI and the photo versions of XI players.
 - **`push_match_events` and teams.**
   - A push with a `team` block links the match to that team when the caller owns the team or scores for it.
@@ -121,6 +121,7 @@ Each delivery records who was on strike, at the other end and bowling. The score
   - Linking a fixture marks it played, unless the match has been deleted.
   - A record over 16 KB is stored as empty: the match still syncs, but its figures don't count.
 - **Deleting a match.** The owner's Delete on My team → Results calls `delete_match(code)`, which sets the team match's visibility to `private` and puts a played fixture back to scheduled. Nothing is wiped: every public reader already skips `private` matches, so the match leaves the team page, stats, live link and Realtime, and the scorer's "Your matches" list hides it too. Because the row stays, a scorer's phone that keeps pushing only updates the hidden match instead of recreating it. The owner's own phone also drops its local copy and events (`removeLocalMatch`); other phones keep theirs. A repeat call succeeds, and there is no undo screen yet.
+- **Scorer emails.** The owner can give a squad player an email and a Can score switch (Edit player). Emails live in `squad_scorer_emails`, which has RLS on and no grants, so only the owner's `get_scorer_emails` returns them; the public team page, `get_my_team` and invites never do. Nobody is added by the owner's switch alone: a Google account whose Google identity has that email with `email_verified` true sees the team in `get_email_invites` on My team and becomes a scorer only by tapping Join (`accept_email_invite`, which keeps the 10-scorer limit). Until then the owner sees "Waiting for them to join", so allowing an email reveals nothing about that person. No thanks hides the invite on that phone only. Switching Can score off, changing or clearing an allowed email removes that scorer, and Remove scorer switches Can score off; editing an email that never allowed scoring touches nobody. "Send email" opens the owner's own email app (`scorerInviteHref`); the app sends no email itself.
 - **Limits per team:** 60 squad players, 300 fixtures, 30 seasons, 10 scorers and 5 open invites. Names can be up to 40 characters, grounds 60 and fixture notes 280.
 
 ## Team look and posters

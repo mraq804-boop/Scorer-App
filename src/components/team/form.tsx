@@ -34,6 +34,10 @@ export function teamErrorMessage(error: TeamError, quota: string = t("team.error
       return t("brand.error.tooLarge");
     case "picture_refused":
       return t("brand.error.refused");
+    case "invalid_email":
+      return t("team.error.email");
+    case "email_taken":
+      return t("team.error.emailTaken");
     default:
       return t("team.error.saveFailed");
   }
@@ -74,7 +78,7 @@ type TextFieldProps = {
   label: string;
   value: string;
   error?: string;
-  type?: "text" | "date" | "time" | "number";
+  type?: "text" | "date" | "time" | "number" | "email";
   onChange: (value: string) => void;
 };
 
@@ -89,7 +93,7 @@ export function TextField({ label, value, error, type = "text", onChange }: Text
           value={value}
           autoComplete="off"
           autoCapitalize={type === "text" ? "words" : undefined}
-          inputMode={type === "number" ? "numeric" : undefined}
+          inputMode={type === "number" ? "numeric" : type === "email" ? "email" : undefined}
           onChange={(event) => onChange(event.target.value)}
           className="h-12 rounded-xl px-3.5 md:text-base"
         />

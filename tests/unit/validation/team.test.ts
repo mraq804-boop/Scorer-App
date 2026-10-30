@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { t } from "@/lib/i18n";
-import { validateFixture, validatePlayer, validateSeason, validateTeam, zonedParts } from "@/lib/validation/team";
+import { validateFixture, validatePlayer, validateScorerEmail, validateSeason, validateTeam, zonedParts } from "@/lib/validation/team";
 
 function teamErrors(input: Parameters<typeof validateTeam>[0]) {
   const result = validateTeam(input);
@@ -101,6 +101,25 @@ describe("validatePlayer", () => {
       ok: false,
       errors: { name: t("setup.error.tooLong") },
     });
+  });
+});
+
+describe("validateScorerEmail", () => {
+  it("trims and lowercases an email, and treats a blank one as none", () => {
+    expect(validateScorerEmail("  Ali.Khan@Gmail.com ")).toEqual({ ok: true, value: "ali.khan@gmail.com" });
+    expect(validateScorerEmail("   ")).toEqual({ ok: true, value: null });
+  });
+
+  it("refuses something that isn't an email, or is too long", () => {
+    const refused = { ok: false, errors: { email: t("team.error.email") } };
+    expect(validateScorerEmail("ali")).toEqual(refused);
+    expect(validateScorerEmail("ali@gmail")).toEqual(refused);
+    expect(validateScorerEmail("a b@gmail.com")).toEqual(refused);
+    expect(validateScorerEmail("ali?cc=x@gmail.com")).toEqual(refused);
+    expect(validateScorerEmail("ali,bob@gmail.com")).toEqual(refused);
+    expect(validateScorerEmail("ali%40@gmail.com")).toEqual(refused);
+    expect(validateScorerEmail("ali.khan+cricket@my-club.co.uk")).toEqual({ ok: true, value: "ali.khan+cricket@my-club.co.uk" });
+    expect(validateScorerEmail(`${"a".repeat(250)}@gmail.com`)).toEqual(refused);
   });
 });
 

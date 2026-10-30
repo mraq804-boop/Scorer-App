@@ -12,6 +12,7 @@ import { BrandEditor } from "@/components/team/brand-editor";
 import { CreateTeam, EditTeam } from "@/components/team/create-team";
 import { FixturesEditor } from "@/components/team/fixtures-editor";
 import { FormAlert } from "@/components/team/form";
+import { EmailInvites } from "@/components/team/email-invites";
 import { MatchOutcomes } from "@/components/team/match-outcomes";
 import { ScorersEditor } from "@/components/team/scorers-editor";
 import { SeasonsEditor } from "@/components/team/seasons-editor";
@@ -239,9 +240,19 @@ function TeamBody({ view, retry, refresh }: TeamBodyProps) {
         </div>
       );
     case "none":
-      return <CreateTeam client={view.client} onCreated={() => refresh(view.client)} />;
+      return (
+        <>
+          <EmailInvites client={view.client} onJoined={() => refresh(view.client)} />
+          <CreateTeam client={view.client} onCreated={() => refresh(view.client)} />
+        </>
+      );
     case "team":
-      return <TeamSections client={view.client} team={view.team} onChanged={() => refresh(view.client)} />;
+      return (
+        <>
+          {view.team.role === "scorer" && <EmailInvites client={view.client} onJoined={() => refresh(view.client)} />}
+          <TeamSections client={view.client} team={view.team} onChanged={() => refresh(view.client)} />
+        </>
+      );
   }
 }
 

@@ -23,6 +23,8 @@ export type TeamError =
   | "quota_exceeded"
   | "invalid_time_zone"
   | "not_in_xi"
+  | "invalid_email"
+  | "email_taken"
   | "refused"
   | "picture_too_large"
   | "picture_refused"
@@ -33,6 +35,10 @@ export type TeamResult<T> = { ok: true; value: T } | { ok: false; error: TeamErr
 export type NewTeam = { name: string; homeGround: string | null; timeZone: string };
 export type FixtureInput = Omit<CachedFixture, "matchCode">;
 export type Scorer = { userId: string; name: string | null; addedAt: string };
+
+export type ScorerEmail = { playerId: string; email: string; canScore: boolean; joined: boolean };
+
+export type EmailInvite = { code: string; name: string; colour: string | null; logoVersion: number | null };
 
 export class TeamRemoteError extends Error {
   readonly code: TeamError;
@@ -51,6 +57,8 @@ const SERVER_ERRORS: readonly TeamError[] = [
   "quota_exceeded",
   "invalid_time_zone",
   "not_in_xi",
+  "invalid_email",
+  "email_taken",
 ];
 
 function failure(error: RpcError, status: number): TeamError {
@@ -283,6 +291,60 @@ export async function replaceTeamPicture(client: SupabaseClient, change: Picture
   }
   if (change.oldPath !== null) await deleteTeamPicture(client, change.oldPath);
   return saved;
+}
+
+function readScorerEmails(data: unknown): { value: ScorerEmail[] } | undefined {
+  if (!Array.isArray(data)) return undefined;
+  return {
+    value: data.flatMap((row) =>
+      isObject(row) &&
+      typeof row.playerId === "string" &&
+      typeof row.email === "string" &&
+      typeof row.canScore === "boolean" &&
+      typeof row.joined === "boolean"
+        ? [{ playerId: row.playerId, email: row.email, canScore: row.canScore, joined: row.joined }]
+        : [],
+    ),
+  };
+}
+
+function readEmailInvites(data: unknown): { value: EmailInvite[] } | undefined {
+  if (!Array.isArray(data)) return undefined;
+  return {
+    value: data.flatMap((row) =>
+      isObject(row) && typeof row.code === "string" && typeof row.name === "string"
+        ? [
+            {
+              code: row.code,
+              name: row.name,
+              colour: typeof row.colour === "string" ? row.colour : null,
+              logoVersion: typeof row.logoVersion === "number" ? row.logoVersion : null,
+            },
+          ]
+        : [],
+    ),
+  };
+}
+
+export function fetchScorerEmails(client: SupabaseClient): Promise<TeamResult<ScorerEmail[]>> {
+  return call(client, "get_scorer_emails", undefined, readScorerEmails);
+}
+
+export function setPlayerScorerEmail(
+  client: SupabaseClient,
+  playerId: string,
+  email: string | null,
+  canScore: boolean,
+): Promise<TeamResult<void>> {
+  return call(client, "set_player_scorer_email", { p_player: playerId, p_email: email, p_can_score: canScore }, readNothing);
+}
+
+export function fetchEmailInvites(client: SupabaseClient): Promise<TeamResult<EmailInvite[]>> {
+  return call(client, "get_email_invites", undefined, readEmailInvites);
+}
+
+export function acceptEmailInvite(client: SupabaseClient, code: string): Promise<TeamResult<string>> {
+  return call(client, "accept_email_invite", { p_code: code }, readText);
 }
 
 export function removeScorer(client: SupabaseClient, userId: string): Promise<TeamResult<void>> {

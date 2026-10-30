@@ -4,10 +4,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { LocalDb } from "@/lib/local/db";
 import {
   TeamRemoteError,
+  acceptEmailInvite,
   acceptScorerInvite,
   createScorerInvite,
   createTeam,
   deleteMatch,
+  fetchEmailInvites,
+  fetchScorerEmails,
   fetchScorers,
   fetchTeamPage,
   fetchMyTeam,
@@ -16,6 +19,7 @@ import {
   removeScorer,
   replaceTeamPicture,
   setPlayerPhoto,
+  setPlayerScorerEmail,
   setTeamColour,
   setTeamLogo,
   setPotm,
@@ -355,6 +359,58 @@ describe("team calls", () => {
     ]);
   });
 
+  it("sets a player's scoring email and reads them back for the owner", async () => {
+    const { client, rpc } = clientWith((name) =>
+      ok(
+        name === "get_scorer_emails"
+          ? [
+              { playerId: "p1", email: "ali@gmail.com", canScore: true, joined: false },
+              { playerId: 7, email: "bad" },
+            ]
+          : null,
+      ),
+    );
+
+    expect(await setPlayerScorerEmail(client, "p1", "ali@gmail.com", true)).toEqual({ ok: true, value: undefined });
+    expect(await setPlayerScorerEmail(client, "p1", null, false)).toEqual({ ok: true, value: undefined });
+    expect(await fetchScorerEmails(client)).toEqual({
+      ok: true,
+      value: [{ playerId: "p1", email: "ali@gmail.com", canScore: true, joined: false }],
+    });
+    expect(rpc.mock.calls).toEqual([
+      ["set_player_scorer_email", { p_player: "p1", p_email: "ali@gmail.com", p_can_score: true }],
+      ["set_player_scorer_email", { p_player: "p1", p_email: null, p_can_score: false }],
+      ["get_scorer_emails", undefined],
+    ]);
+  });
+
+  it("lists the teams that invited this person by email, and joins one by code", async () => {
+    const { client, rpc } = clientWith((name) =>
+      ok(
+        name === "get_email_invites"
+          ? [
+              { code: "abcd2345", name: "Lions", colour: "ocean", logoVersion: 2 },
+              { code: "efgh6789", name: "Eagles", colour: null, logoVersion: null },
+              { code: 5, name: "Broken" },
+            ]
+          : "abcd2345",
+      ),
+    );
+
+    expect(await fetchEmailInvites(client)).toEqual({
+      ok: true,
+      value: [
+        { code: "abcd2345", name: "Lions", colour: "ocean", logoVersion: 2 },
+        { code: "efgh6789", name: "Eagles", colour: null, logoVersion: null },
+      ],
+    });
+    expect(await acceptEmailInvite(client, "abcd2345")).toEqual({ ok: true, value: "abcd2345" });
+    expect(rpc.mock.calls).toEqual([
+      ["get_email_invites", undefined],
+      ["accept_email_invite", { p_code: "abcd2345" }],
+    ]);
+  });
+
   it("createScorerInvite returns the token and acceptScorerInvite returns the team code", async () => {
     const { client, rpc } = clientWith((name) => ok(name === "create_scorer_invite" ? "token-1" : "abcd2345"));
 
@@ -447,6 +503,8 @@ describe("team calls", () => {
     ["quota_exceeded", fail("quota_exceeded", 400, "P0001"), "quota_exceeded"],
     ["invalid_time_zone", fail("invalid_time_zone", 400, "P0001"), "invalid_time_zone"],
     ["not_in_xi", fail("not_in_xi", 400, "P0001"), "not_in_xi"],
+    ["invalid_email", fail("invalid_email", 400, "P0001"), "invalid_email"],
+    ["email_taken", fail("email_taken", 400, "P0001"), "email_taken"],
     ["a check constraint violation", fail('new row for relation "teams" violates check constraint "teams_name_check"', 400, "23514"), "refused"],
     ["a unique violation", fail('duplicate key value violates unique constraint "teams_code_key"', 409, "23505"), "refused"],
     ["a constraint message without an error code", fail('new row for relation "fixtures" violates check constraint "fixtures_overs_check"'), "refused"],
@@ -466,6 +524,10 @@ describe("team calls", () => {
     expect(await setResultOverride(client, "abcd2345", false)).toEqual(failed);
     expect(await deleteMatch(client, "abcd2345")).toEqual(failed);
     expect(await createScorerInvite(client)).toEqual(failed);
+    expect(await setPlayerScorerEmail(client, "p1", "ali@gmail.com", true)).toEqual(failed);
+    expect(await fetchScorerEmails(client)).toEqual(failed);
+    expect(await fetchEmailInvites(client)).toEqual(failed);
+    expect(await acceptEmailInvite(client, "abcd2345")).toEqual(failed);
     expect(await acceptScorerInvite(client, "token")).toEqual(failed);
     expect(await removeScorer(client, "user-1")).toEqual(failed);
     expect(await upsertSquadPlayers(client, TEAM_ID, [])).toEqual(failed);

@@ -151,6 +151,168 @@ test("editing a player opens a sheet with their details", async ({ page }) => {
   await expect(sheet).toHaveCount(0);
 });
 
+test("the owner lets a squad player score by email and can email them", async ({ page }) => {
+  await signIn(page, team());
+  const saved: { p_player: string; p_email: string | null; p_can_score: boolean }[] = [];
+  let emails: unknown[] = [];
+  await page.route("**/rest/v1/rpc/get_scorer_emails", (route) => {
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
+    return fulfillJson(route, emails);
+  });
+  await page.route("**/rest/v1/rpc/set_player_scorer_email", (route) => {
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
+    const body = route.request().postDataJSON();
+    saved.push(body);
+    emails = [{ playerId: body.p_player, email: body.p_email, canScore: body.p_can_score, joined: false }];
+    return fulfillJson(route, null);
+  });
+  await page.goto("/team");
+  const squad = page.getByRole("region", { name: "Squad" });
+
+  await squad.getByRole("button", { name: "Edit Ali" }).click();
+  const sheet = page.getByRole("dialog", { name: "Edit player" });
+  await expect(sheet.getByRole("switch", { name: "Can score" })).toBeDisabled();
+  await sheet.getByLabel("Email").fill("not an email");
+  await sheet.getByRole("switch", { name: "Can score" }).click();
+  await sheet.getByRole("button", { name: "Save" }).click();
+  await expect(sheet.getByText("Enter a valid email")).toBeVisible();
+  expect(saved).toEqual([]);
+
+  await sheet.getByLabel("Email").fill(" Ali@Gmail.com ");
+  await sheet.getByRole("button", { name: "Save" }).click();
+  await expect.poll(() => saved).toEqual([{ p_player: ALI, p_email: "ali@gmail.com", p_can_score: true }]);
+  await expect(sheet).toHaveCount(0);
+  await expect(squad.getByRole("listitem").filter({ hasText: "Ali" })).toContainText("Invited");
+
+  await squad.getByRole("button", { name: "Edit Ali" }).click();
+  await expect(sheet.getByLabel("Email")).toHaveValue("ali@gmail.com");
+  await expect(sheet).toContainText("Waiting for them to join");
+  const href = (await sheet.getByRole("link", { name: "Send email" }).getAttribute("href")) ?? "";
+  expect(href).toMatch(/^mailto:ali@gmail\.com\?subject=/);
+  expect(decodeURIComponent(href)).toContain("Score Lions matches");
+  expect(decodeURIComponent(href)).toContain("http://localhost:3200/team");
+});
+
+test("a failed email load can be retried without losing what was typed", async ({ page }) => {
+  await signIn(page, team());
+  let loads = 0;
+  await page.route("**/rest/v1/rpc/get_scorer_emails", (route) => {
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
+    loads += 1;
+    if (loads === 1) return route.fulfill({ status: 503, headers: CORS, contentType: "application/json", body: "{}" });
+    return fulfillJson(route, [{ playerId: ALI, email: "ali@gmail.com", canScore: true, joined: true }]);
+  });
+  await page.goto("/team");
+  const squad = page.getByRole("region", { name: "Squad" });
+  await squad.getByRole("button", { name: "Edit Ali" }).click();
+  const sheet = page.getByRole("dialog", { name: "Edit player" });
+
+  await expect(sheet.getByRole("status")).toHaveText(/Couldn't load scoring emails\./);
+  await expect(sheet.getByLabel("Email")).toHaveCount(0);
+  await sheet.getByLabel("Player name").fill("Ali Khan");
+  await sheet.getByRole("button", { name: "Try again" }).click();
+
+  await expect(sheet.getByLabel("Email")).toHaveValue("ali@gmail.com");
+  await expect(sheet.getByLabel("Player name")).toHaveValue("Ali Khan");
+  await expect(sheet).toContainText("Joined as a scorer");
+  await sheet.getByRole("button", { name: "Cancel" }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(squad.getByRole("listitem").filter({ hasText: "Ali" })).toContainText("Scorer");
+});
+
+test("a new player is kept and the squad refreshes even when their email is refused", async ({ page }) => {
+  const calls = await signIn(page, team());
+  await stubRpc(page, "get_scorer_emails", [{ playerId: ALI, email: "taken@gmail.com", canScore: true, joined: false }]);
+  await page.route("**/rest/v1/rpc/set_player_scorer_email", (route) =>
+    route.request().method() === "OPTIONS"
+      ? route.fulfill({ status: 204, headers: CORS })
+      : route.fulfill({ status: 400, headers: CORS, contentType: "application/json", body: JSON.stringify({ code: "P0001", message: "email_taken" }) }),
+  );
+  const upserts = await stubRpc(page, "upsert_squad_players", 1);
+  await page.goto("/team");
+  await expect(page.getByRole("region", { name: "Squad" }).getByRole("listitem")).toHaveCount(5);
+  const before = calls.myTeam;
+
+  await page.getByRole("button", { name: "Add player" }).click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByLabel("New player's name").fill("Zain");
+  await sheet.getByLabel("Email").fill("taken@gmail.com");
+  await sheet.getByRole("button", { name: "Add player" }).click();
+
+  await expect(sheet.getByRole("alert")).toHaveText("Another player already has this email");
+  expect(upserts).toHaveLength(1);
+  await expect.poll(() => calls.myTeam).toBeGreaterThan(before);
+});
+
+test("a teammate allowed by email joins the team with one tap", async ({ page }) => {
+  const { id, code, name, homeGround, timeZone, squad, seasons, fixtures } = team();
+  let joined = false;
+  const accepted: unknown[] = [];
+  await fakeAccount(page, "google", null);
+  await page.route("**/rest/v1/rpc/get_my_team", (route) => {
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
+    return fulfillJson(route, joined ? { role: "scorer", team: { id, code, name, homeGround, timeZone }, squad, seasons, fixtures } : null);
+  });
+  await page.route("**/rest/v1/rpc/get_email_invites", (route) => {
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
+    return fulfillJson(route, joined ? [] : [{ code: "abcd2345", name: "Lions", colour: "ocean", logoVersion: null }]);
+  });
+  await page.route("**/rest/v1/rpc/accept_email_invite", (route) => {
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: CORS });
+    accepted.push(route.request().postDataJSON());
+    joined = true;
+    return fulfillJson(route, "abcd2345");
+  });
+  await openNewMatch(page);
+  await waitForSession(page);
+  await page.goto("/team");
+
+  const invite = page.getByRole("region", { name: "Lions wants you to score for them" });
+  await expect(invite).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create your team" })).toBeVisible();
+  await invite.getByRole("button", { name: "Join", exact: true }).click();
+
+  await expect.poll(() => accepted).toEqual([{ p_code: "abcd2345" }]);
+  await expect(page.getByText("You joined Lions")).toBeVisible();
+  await expect(page.getByText("You score for this team")).toBeVisible();
+  await expect(invite).toHaveCount(0);
+});
+
+test("a full team's invite says so, and No thanks hides it on this phone", async ({ page }) => {
+  await signIn(page, null);
+  await stubRpc(page, "get_email_invites", [{ code: "abcd2345", name: "Lions", colour: null, logoVersion: null }]);
+  await page.route("**/rest/v1/rpc/accept_email_invite", (route) =>
+    route.request().method() === "OPTIONS"
+      ? route.fulfill({ status: 204, headers: CORS })
+      : route.fulfill({ status: 400, headers: CORS, contentType: "application/json", body: JSON.stringify({ code: "P0001", message: "quota_exceeded" }) }),
+  );
+  await page.goto("/team");
+  const invite = page.getByRole("region", { name: "Lions wants you to score for them" });
+
+  await invite.getByRole("button", { name: "Join", exact: true }).click();
+  await expect(invite.getByRole("alert")).toHaveText("This team already has 10 scorers.");
+  await invite.getByRole("button", { name: "No thanks" }).click();
+  await expect(invite).toHaveCount(0);
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Create your team" })).toBeVisible();
+  await expect(invite).toHaveCount(0);
+});
+
+test("a scorer never sees or loads squad emails", async ({ page }) => {
+  const loads: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().endsWith("/rpc/get_scorer_emails")) loads.push(request.url());
+  });
+  await signIn(page, team({ role: "scorer" }));
+  await page.goto("/team");
+  await expect(page.getByRole("region", { name: "Squad" }).getByRole("listitem")).toHaveCount(5);
+  await page.getByRole("button", { name: "Add player" }).click();
+
+  await expect(page.getByRole("dialog").getByLabel("Email")).toHaveCount(0);
+  expect(loads).toEqual([]);
+});
+
 test("an owner can't add a season that ends before it starts", async ({ page }) => {
   const seasonCalls: string[] = [];
   page.on("request", (request) => {
