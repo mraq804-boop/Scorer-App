@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { CORS, fulfillJson } from "./support/fake-sync";
-import { fakeAccount, openNewMatch, waitForSession } from "./support/team";
+import { fakeAccount, openNewMatch, readStore, seedTeam, team, waitForSession } from "./support/team";
 
 test("account shows Google sign-in for guests", async ({ page }) => {
   await page.goto("/account");
@@ -8,6 +8,7 @@ test("account shows Google sign-in for guests", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Sign in with Google to keep your matches" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign in with Google" })).toBeEnabled();
   await expect(page.getByText("Guest on this phone")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign out" })).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "Tabs" }).getByRole("link", { name: "Account" })).toHaveAttribute(
     "aria-current",
     "page",
@@ -94,4 +95,30 @@ test("a signed-in account lists only matches that weren't deleted", async ({ pag
 
   await expect.poll(() => requests.length).toBeGreaterThan(0);
   expect(new URL(requests[0]).searchParams.get("visibility")).toBe("eq.link");
+});
+
+test("a Google user signs out on this phone only and is a guest again", async ({ page }) => {
+  await fakeAccount(page, "google", null);
+  await openNewMatch(page);
+  await waitForSession(page);
+  await seedTeam(page, team());
+  await page.route("**/rest/v1/matches?*", (route) =>
+    route.request().method() === "OPTIONS" ? route.fulfill({ status: 204, headers: CORS }) : fulfillJson(route, []),
+  );
+  const logouts: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/auth/v1/logout")) logouts.push(request.url());
+  });
+  await page.goto("/account");
+
+  await page.getByRole("button", { name: "Sign out" }).click();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog).toContainText("Your matches stay on this phone.");
+  await dialog.getByRole("button", { name: "Sign out", exact: true }).click();
+
+  await expect(page.getByRole("button", { name: "Sign in with Google" })).toBeVisible();
+  await expect(page.getByText("Guest on this phone")).toBeVisible();
+  expect(logouts).toHaveLength(1);
+  expect(new URL(logouts[0]).searchParams.get("scope")).toBe("local");
+  expect(await readStore(page, "team")).toEqual([]);
 });

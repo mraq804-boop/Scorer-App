@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { publicEnv } from "@/lib/env";
 import { completeClaim } from "@/lib/identity/google";
 import { guestSessionKeeper } from "@/lib/identity/guest";
+import { resumeAfterSignIn } from "@/lib/identity/session";
 import { getLocalDb } from "@/lib/local/db";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
 import { supabasePush } from "@/lib/sync/push";
@@ -50,6 +51,11 @@ export function GuestSession() {
       isReady: session.isReady,
       pushSquad: supabaseSquadPush(client),
     });
+    void resumeAfterSignIn(client, db)
+      .then((resumed) => {
+        if (resumed > 0) requestSync();
+      })
+      .catch(() => undefined);
     const onOnline = () => void session.ensure();
     window.addEventListener("online", onOnline);
     void session.ensure();

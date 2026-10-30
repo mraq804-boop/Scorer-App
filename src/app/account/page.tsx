@@ -5,6 +5,7 @@ import { LoaderCircle, LogIn, User } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { Appearance } from "@/components/account/appearance";
+import { SignOutRow } from "@/components/account/sign-out";
 import { YourMatches } from "@/components/account/your-matches";
 import { AppBar } from "@/components/app/app-bar";
 import { Copyright } from "@/components/copyright";
@@ -135,6 +136,7 @@ function AccountContent() {
       <section className="flex flex-col divide-y overflow-hidden rounded-2xl border bg-card">
         <InstallRow />
         <Appearance />
+        {view.kind === "member" && <SignOutRow client={view.client} />}
       </section>
     </>
   );
