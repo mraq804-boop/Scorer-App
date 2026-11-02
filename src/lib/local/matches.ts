@@ -11,9 +11,10 @@ export type MatchSetup = {
   teams: [string, string];
   rules: Rules;
   toss: { winner: TeamSide; choice: "bat" | "bowl" };
-  striker: SetupPlayer;
-  nonStriker: SetupPlayer;
-  bowler: SetupPlayer;
+  striker?: SetupPlayer;
+  nonStriker?: SetupPlayer;
+  bowler?: SetupPlayer;
+  typedFirst?: boolean;
   team?: { id: string; fixtureId: string | null; xi: { id: string; name: string }[] };
 };
 
@@ -103,13 +104,25 @@ function setupPlayer(chosen: SetupPlayer, team: TeamSide): Player {
     : { id: chosen.id, name: chosen.name, team };
 }
 
+function openingDrafts(setup: MatchSetup, battingTeam: TeamSide): EventDraft[] {
+  if (setup.striker === undefined || setup.nonStriker === undefined || setup.bowler === undefined) {
+    throw new Error("A scored first innings needs two openers and a bowler");
+  }
+  const striker = setupPlayer(setup.striker, battingTeam);
+  const nonStriker = setupPlayer(setup.nonStriker, battingTeam);
+  const bowler = setupPlayer(setup.bowler, otherSide(battingTeam));
+  return [
+    { type: "player_added", player: striker },
+    { type: "player_added", player: nonStriker },
+    { type: "player_added", player: bowler },
+    { type: "innings_started", innings: 1, battingTeam, striker: striker.id, nonStriker: nonStriker.id, bowler: bowler.id },
+  ];
+}
+
 export async function createLocalMatch(db: LocalDb, setup: MatchSetup): Promise<LocalMatch> {
   const [teamA, teamB] = setup.teams;
   const title = setup.title ?? `${teamA} vs ${teamB}`;
   const battingTeam = setup.toss.choice === "bat" ? setup.toss.winner : otherSide(setup.toss.winner);
-  const striker = setupPlayer(setup.striker, battingTeam);
-  const nonStriker = setupPlayer(setup.nonStriker, battingTeam);
-  const bowler = setupPlayer(setup.bowler, otherSide(battingTeam));
   const drafts: EventDraft[] = [
     {
       type: "match_created",
@@ -118,17 +131,7 @@ export async function createLocalMatch(db: LocalDb, setup: MatchSetup): Promise<
       rules: setup.rules,
       toss: setup.toss,
     },
-    { type: "player_added", player: striker },
-    { type: "player_added", player: nonStriker },
-    { type: "player_added", player: bowler },
-    {
-      type: "innings_started",
-      innings: 1,
-      battingTeam,
-      striker: striker.id,
-      nonStriker: nonStriker.id,
-      bowler: bowler.id,
-    },
+    ...(setup.typedFirst === true ? [] : openingDrafts(setup, battingTeam)),
   ];
   const now = new Date().toISOString();
   const base: MatchBase = {

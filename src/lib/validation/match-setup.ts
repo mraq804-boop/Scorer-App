@@ -69,22 +69,32 @@ export const matchSetupSchema = z
     teams: z.tuple([nameSchema, nameSchema]),
     rules,
     toss: z.object({ winner: side, choice: z.enum(["bat", "bowl"]) }),
-    striker: setupPlayer,
-    nonStriker: setupPlayer,
-    bowler: setupPlayer,
+    striker: setupPlayer.optional(),
+    nonStriker: setupPlayer.optional(),
+    bowler: setupPlayer.optional(),
+    typedFirst: z.boolean().optional(),
     team: teamSetup.optional(),
   })
   .refine(
     ({ striker, nonStriker }) =>
-      playerName(striker) === "" || playerName(nonStriker) === "" || !isSamePlayer(striker, nonStriker),
+      striker === undefined ||
+      nonStriker === undefined ||
+      playerName(striker) === "" ||
+      playerName(nonStriker) === "" ||
+      !isSamePlayer(striker, nonStriker),
     { path: ["nonStriker"], error: t("setup.error.sameOpener") },
   )
   .superRefine((setup, context) => {
+    if (setup.typedFirst !== true) {
+      for (const field of OPENING_FIELDS) {
+        if (setup[field] === undefined) context.addIssue({ code: "custom", path: [field], message: t("setup.error.required") });
+      }
+    }
     if (setup.team === undefined) return;
     const playing = new Set(setup.team.xi.map((player) => player.id));
     for (const field of OPENING_FIELDS) {
       const chosen = setup[field];
-      if (typeof chosen !== "string" && !playing.has(chosen.id)) {
+      if (chosen !== undefined && typeof chosen !== "string" && !playing.has(chosen.id)) {
         context.addIssue({ code: "custom", path: [field], message: t("setup.error.notInXi") });
       }
     }

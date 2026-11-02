@@ -118,6 +118,22 @@ describe("validateMatchSetup", () => {
   });
 });
 
+describe("validateMatchSetup when the first innings will be typed in", () => {
+  it("needs no openers or bowler", () => {
+    const typed = { teams: ["Lions", "Tigers"], rules: defaultRules("tape", 10), toss: { winner: "A", choice: "bowl" }, typedFirst: true };
+    expect(validateMatchSetup(typed)).toEqual({ ok: true, setup: typed });
+  });
+
+  it("still needs openers and a bowler when it will be scored", () => {
+    const scored = { teams: ["Lions", "Tigers"], rules: defaultRules("tape", 10), toss: { winner: "A", choice: "bowl" }, typedFirst: false };
+    expect(failure(scored)).toEqual({
+      striker: t("setup.error.required"),
+      nonStriker: t("setup.error.required"),
+      bowler: t("setup.error.required"),
+    });
+  });
+});
+
 describe("validateMatchSetup for a team match", () => {
   const ali = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Ali" };
   const usman = { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", name: "Usman" };

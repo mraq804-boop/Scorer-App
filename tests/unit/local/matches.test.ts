@@ -128,6 +128,23 @@ describe("createLocalMatch", () => {
   });
 });
 
+describe("createLocalMatch with a typed first innings", () => {
+  it("records only the match, so the first innings can be typed in", async () => {
+    const db = freshDb();
+    const match = await createLocalMatch(db, {
+      teams: ["Lions", "Tigers"],
+      rules: defaultRules("tape", 10),
+      toss: { winner: "A", choice: "bowl" },
+      typedFirst: true,
+    });
+
+    const events = await loadEvents(db, match.id);
+    expect(events.map((event) => event.type)).toEqual(["match_created"]);
+    expect(replay(events)).toMatchObject({ status: "setup", innings: [] });
+    expect(match.summary.lines).toEqual([]);
+  });
+});
+
 describe("appendEvents", () => {
   it("appendEvents assigns contiguous seq and updates summary", async () => {
     const db = freshDb();
