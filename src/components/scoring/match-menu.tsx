@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeftRight, ClipboardList, EllipsisVertical, Flag, LogOut, Pencil, Repeat, Share2, SlidersHorizontal } from "lucide-react";
+import { ArrowLeftRight, ClipboardList, EllipsisVertical, Flag, LogOut, PenLine, Pencil, Repeat, Share2, SlidersHorizontal } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useState } from "react";
 import { BallListSheet } from "@/components/scoring/ball-list-sheet";
@@ -38,6 +38,7 @@ type MatchMenuProps = {
   recent: readonly string[];
   onRecord: OnRecord;
   onEditBall: (eventId: string) => void;
+  onEditTyped: (innings: 1 | 2) => void;
 };
 
 type MenuItemProps = {
@@ -131,7 +132,7 @@ function ShareSheet({ local, state, onClose }: { local: MatchMenuProps["local"];
   );
 }
 
-export function MatchMenu({ local, matchTeam, state, blocked, busy, recent, onRecord, onEditBall }: MatchMenuProps) {
+export function MatchMenu({ local, matchTeam, state, blocked, busy, recent, onRecord, onEditBall, onEditTyped }: MatchMenuProps) {
   const [panel, setPanel] = useState<Panel | null>(null);
   const live = currentInnings(state);
   const locked = blocked || busy || live === null;
@@ -177,6 +178,20 @@ export function MatchMenu({ local, matchTeam, state, blocked, busy, recent, onRe
                 disabled={blocked || busy || !bowled}
                 onClick={() => setPanel("balls")}
               />
+              {state.innings
+                .filter((innings) => innings.entered === true)
+                .map((innings) => (
+                  <MenuItem
+                    key={innings.number}
+                    icon={PenLine}
+                    label={t("typed.edit", { team: state.teams[innings.battingTeam].name })}
+                    disabled={blocked || busy}
+                    onClick={() => {
+                      close();
+                      onEditTyped(innings.number);
+                    }}
+                  />
+                ))}
               <MenuItem icon={SlidersHorizontal} label={t("menu.settings")} disabled={locked} onClick={() => setPanel("settings")} />
               <MenuItem icon={Flag} label={t("score.endInnings")} disabled={locked} onClick={() => setPanel("end")} />
               <MenuItem icon={ClipboardList} label={t("scorecard.title")} onClick={() => setPanel("scorecard")} />

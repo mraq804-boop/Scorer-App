@@ -24,7 +24,7 @@ function sameOpener(first: Opener, second: Opener): boolean {
   return !first.squad && !second.squad && sameName(first.name, second.name);
 }
 
-function battingSide(state: MatchState, innings: 1 | 2): TeamSide {
+export function battingSide(state: MatchState, innings: 1 | 2): TeamSide {
   const first = state.innings.find((candidate) => candidate.number === 1);
   if (innings === 2 && first !== undefined) return otherSide(first.battingTeam);
   if (state.toss === null) return "A";
@@ -38,10 +38,11 @@ type StartInningsSheetProps = {
   recent: readonly string[];
   busy: boolean;
   undo: ReactNode;
+  onTypeIn?: () => void;
   onRecord: (drafts: EventDraft[]) => Promise<boolean>;
 };
 
-export function StartInningsSheet({ state, innings, matchTeam, recent, busy, undo, onRecord }: StartInningsSheetProps) {
+export function StartInningsSheet({ state, innings, matchTeam, recent, busy, undo, onTypeIn, onRecord }: StartInningsSheetProps) {
   const [values, setValues] = useState<Values>({ striker: "", nonStriker: "", bowler: "" });
   const [picks, setPicks] = useState<Values>({ striker: "", nonStriker: "", bowler: "" });
   const [errors, setErrors] = useState<Partial<Record<Field, string>>>({});
@@ -166,7 +167,14 @@ export function StartInningsSheet({ state, innings, matchTeam, recent, busy, und
             {t("innings.start")}
           </Button>
         </form>
-        <DrawerFooter>{undo}</DrawerFooter>
+        <DrawerFooter>
+          {onTypeIn !== undefined && (
+            <Button variant="outline" disabled={busy} onClick={onTypeIn} className="h-12 rounded-xl text-base font-semibold">
+              <bdi>{t("typed.instead", { team: state.teams[batting].name })}</bdi>
+            </Button>
+          )}
+          {undo}
+        </DrawerFooter>
       </DrawerContent>
     </Drawer>
   );

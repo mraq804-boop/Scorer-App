@@ -28,7 +28,7 @@ Viewer (/m/<code>, no sign-in)
 - **Local store.** Dexie database `cricket-scorer`, version 2: `matches`, `events` (key `[matchId+seq]`), `meta` (device id, pending claim, orphaned balls), `team` (the cached team: squad, seasons, upcoming fixtures and this account's role) and `squadOutbox` (squad players added on the phone and not yet uploaded).
 
 ## Events
-Twelve types. Every event also carries `id` (client UUID), `seq` and `at`.
+Thirteen types. Every event also carries `id` (client UUID), `seq` and `at`.
 
 | Type | Fields |
 |---|---|
@@ -42,10 +42,13 @@ Twelve types. Every event also carries `id` (client UUID), `seq` and `at`.
 | `retired` | `player`, `how` (hurt or out) |
 | `settings_changed` | optional `oversPerInnings`, `playersPerSide`, `target` |
 | `innings_ended` | `innings`, `reason` (overs, all_out, target, manual) |
+| `innings_entered` | `innings`, `battingTeam`, `runs`, `wickets`, `legalBalls`, `bowlers` (each `player`, `legalBalls`, `runs`, `wickets`) |
 | `undo` | `targets`: ids of the events it voids |
 | `correct` | `target`: id of the event it replaces, `patch` |
 
 Each delivery records who was on strike, at the other end and bowling. The scorer's record is the truth; the engine never recomputes past balls' players. Rules never block: they produce warnings and prompts.
+
+**Typed innings.** When the scorer only scores their own side, the other side's innings is typed in as a total with the fielding side's bowler figures (`innings_entered`): from New match ("Type in the … total instead", which creates the match with only `match_created`) when they bat first, or from the innings-2 start sheet when they bat second. Replay turns it into an ended innings marked `entered`, with no batting, overs or commentary; a typed first innings sets the target and leaves the chase to be scored, a typed second innings finishes the match. A later entry for the same innings replaces it (Edit the … total in the menu) and the target and result are worked out again; undo takes it back. In a team match only the opponent's innings can be typed, so the team's batting figures always come from scored balls. Our typed bowler figures feed the team record like scored ones; maidens, dots, fielding and hat-tricks are not known for that innings. The scorecard and live view show such an innings as a total with a note and the bowling figures only.
 
 ## Wire shapes
 - **Push (client to server): nested.** `push_match_events(p_match, p_device, p_events)` takes events as `{ id, seq, at, type, payload }`, with every other field under `payload` (`toWire` in `src/lib/sync/wire.ts`). `p_match` is the header: `id`, `code`, `title`, `teamA`, `teamB`, `rules`, `status`, `summary`, and for a team match a `team` block (`id`, `side`, `fixtureId`, `record`).

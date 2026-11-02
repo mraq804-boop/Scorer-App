@@ -15,13 +15,14 @@ import { findBall } from "@/components/scoring/ball-patch";
 import { BatterSheet } from "@/components/scoring/batter-sheet";
 import { BowlerSheet } from "@/components/scoring/bowler-sheet";
 import { EditBallSheet } from "@/components/scoring/edit-ball-sheet";
+import { EnterInningsSheet } from "@/components/scoring/enter-innings-sheet";
 import { ExtrasToggles, NO_EXTRAS } from "@/components/scoring/extras-toggles";
 import { MatchMenu } from "@/components/scoring/match-menu";
 import { joiningXi } from "@/components/scoring/player-drafts";
 import type { MatchTeam } from "@/components/scoring/player-drafts";
 import { RunPad } from "@/components/scoring/run-pad";
 import { ScoreHeader } from "@/components/scoring/score-header";
-import { StartInningsSheet } from "@/components/scoring/start-innings-sheet";
+import { StartInningsSheet, battingSide } from "@/components/scoring/start-innings-sheet";
 import { WicketSheet } from "@/components/scoring/wicket-sheet";
 import { Button } from "@/components/ui/button";
 import { useMatch } from "@/hooks/use-match";
@@ -31,7 +32,7 @@ import { getLocalDb } from "@/lib/local/db";
 import type { LocalMatch } from "@/lib/local/db";
 import { addToMatchXi, recentPlayerNames } from "@/lib/local/matches";
 import { currentInnings, deliveryDraft, undoTargets } from "@/lib/scoring";
-import type { BallInput, EventDraft, MatchEvent } from "@/lib/scoring";
+import type { BallInput, EventDraft, MatchEvent, TeamSide } from "@/lib/scoring";
 import { getCachedTeam } from "@/lib/team/local";
 import { cn } from "@/lib/utils";
 
@@ -85,6 +86,8 @@ function MatchScreen({ matchId }: { matchId: string }) {
   const [extras, setExtras] = useState(NO_EXTRAS);
   const [wicketOpen, setWicketOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [startChoice, setStartChoice] = useState<"typed" | "scored" | null>(null);
+  const [editingTyped, setEditingTyped] = useState<1 | 2 | null>(null);
   const [autoEndFailedAt, setAutoEndFailedAt] = useState<string | null>(null);
   const autoEndedAt = useRef<string | null>(null);
   const latestUndo = useRef<() => void>(() => undefined);
@@ -156,12 +159,27 @@ function MatchScreen({ matchId }: { matchId: string }) {
   );
   const prompted = !blocked && innings !== null && state.status === "in_progress" ? prompt?.kind : undefined;
   const editing = blocked || editingId === null ? null : findBall(events, state, editingId);
+  const canType = (side: TeamSide) => matchTeam === undefined || matchTeam.side !== side;
+  const starting = !blocked && prompt?.kind === "start_innings" ? prompt.innings : null;
+  const startBatting = starting === null ? null : battingSide(state, starting);
+  const typable = startBatting !== null && canType(startBatting);
+  const typingStart =
+    typable && (startChoice === "typed" || (startChoice === null && starting === 1 && state.innings.length === 0));
+  const typedEdit = editingTyped === null || blocked ? undefined : state.innings.find((candidate) => candidate.number === editingTyped);
   const recordPlay = async (drafts: EventDraft[]) => {
     const joining = joiningXi(drafts, matchTeam);
     if (joining.length > 0) await addToMatchXi(getLocalDb(), matchId, joining).catch(() => undefined);
     return record(drafts);
   };
   const sheet = { state, recent, busy, undo: sheetUndo, onRecord: recordPlay };
+  const recordTyped = async (drafts: EventDraft[]) => {
+    const saved = await recordPlay(drafts);
+    if (saved) {
+      setStartChoice(null);
+      setEditingTyped(null);
+    }
+    return saved;
+  };
 
   return (
     <div data-match-id={matchId} className="flex flex-1 flex-col gap-4 pb-4">
@@ -179,6 +197,7 @@ function MatchScreen({ matchId }: { matchId: string }) {
             recent={recent}
             onRecord={recordPlay}
             onEditBall={setEditingId}
+            onEditTyped={setEditingTyped}
           />
         }
       />
@@ -187,7 +206,7 @@ function MatchScreen({ matchId }: { matchId: string }) {
           {blockedMessage(local.blockedReason)}
         </p>
       )}
-      {innings !== null && (
+      {innings !== null && innings.entered !== true && (
         <ThisOver innings={innings} ballsPerOver={state.rules.ballsPerOver} onSelect={blocked ? undefined : setEditingId} />
       )}
 
@@ -254,8 +273,39 @@ function MatchScreen({ matchId }: { matchId: string }) {
         <BowlerSheet innings={innings} matchTeam={matchTeam} {...sheet} />
       )}
       {prompted === "all_out" && innings !== null && <AllOutDialog innings={innings} {...sheet} />}
-      {!blocked && prompt?.kind === "start_innings" && (
-        <StartInningsSheet innings={prompt.innings} matchTeam={matchTeam} {...sheet} />
+      {starting !== null && startBatting !== null && typingStart && (
+        <EnterInningsSheet
+          state={state}
+          innings={starting}
+          batting={startBatting}
+          matchTeam={matchTeam}
+          recent={recent}
+          busy={busy}
+          undo={sheetUndo}
+          back={{ label: t("typed.scoreInstead"), onClick: () => setStartChoice("scored") }}
+          onRecord={recordTyped}
+        />
+      )}
+      {starting !== null && !typingStart && (
+        <StartInningsSheet
+          innings={starting}
+          matchTeam={matchTeam}
+          {...sheet}
+          onTypeIn={typable ? () => setStartChoice("typed") : undefined}
+        />
+      )}
+      {typedEdit !== undefined && typedEdit.entered === true && (
+        <EnterInningsSheet
+          state={state}
+          innings={typedEdit.number}
+          batting={typedEdit.battingTeam}
+          existing={typedEdit}
+          matchTeam={matchTeam}
+          recent={recent}
+          busy={busy}
+          back={{ label: t("common.cancel"), onClick: () => setEditingTyped(null) }}
+          onRecord={recordTyped}
+        />
       )}
       {editing !== null && (
         <EditBallSheet

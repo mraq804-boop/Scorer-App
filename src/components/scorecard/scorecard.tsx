@@ -263,12 +263,21 @@ function InningsCard({ state, innings }: InningsProps) {
           </span>
         </span>
       </h3>
-      <Batting state={state} innings={innings} />
-      <Bowling state={state} innings={innings} />
-      {innings.fallOfWickets.length > 0 && <FallOfWickets state={state} innings={innings} />}
-      <Partnerships state={state} innings={innings} />
-      <OverByOver state={state} innings={innings} />
-      <Rates innings={innings} />
+      {innings.entered === true ? (
+        <>
+          <p className="text-sm text-muted-foreground">{t("scorecard.typed")}</p>
+          {innings.bowling.length > 0 && <Bowling state={state} innings={innings} />}
+        </>
+      ) : (
+        <>
+          <Batting state={state} innings={innings} />
+          <Bowling state={state} innings={innings} />
+          {innings.fallOfWickets.length > 0 && <FallOfWickets state={state} innings={innings} />}
+          <Partnerships state={state} innings={innings} />
+          <OverByOver state={state} innings={innings} />
+          <Rates innings={innings} />
+        </>
+      )}
     </section>
   );
 }

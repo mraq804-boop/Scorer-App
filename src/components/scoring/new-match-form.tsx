@@ -44,6 +44,7 @@ type Values = {
   pickedStriker: string;
   pickedNonStriker: string;
   pickedBowler: string;
+  typedFirst: boolean;
 };
 
 const INITIAL: Values = {
@@ -63,6 +64,7 @@ const INITIAL: Values = {
   pickedStriker: "",
   pickedNonStriker: "",
   pickedBowler: "",
+  typedFirst: false,
 };
 
 const FOCUS_ORDER: readonly MatchSetupField[] = ["teamA", "teamB", "overs", "xi", "striker", "nonStriker", "bowler"];
@@ -154,6 +156,8 @@ function SetupForm({ players, team, fixture }: SetupFormProps) {
   const battingSide = values.choice === "bat" ? values.winner : otherSide(values.winner);
   const teamBatting = playing !== undefined && battingSide === "A";
   const teamBowling = playing !== undefined && battingSide === "B";
+  const canTypeFirst = playing === undefined || battingSide === "B";
+  const typedFirst = canTypeFirst && values.typedFirst;
   const labels = squadLabels(squad);
   const pickFor = (id: string): SetupPlayer => {
     const chosen = xiPlayers.find((player) => player.id === id);
@@ -163,9 +167,13 @@ function SetupForm({ players, team, fixture }: SetupFormProps) {
     teams: [playing?.name ?? values.teamA, values.teamB],
     rules,
     toss: { winner: values.winner, choice: values.choice },
-    striker: teamBatting ? pickFor(values.pickedStriker) : values.striker,
-    nonStriker: teamBatting ? pickFor(values.pickedNonStriker) : values.nonStriker,
-    bowler: teamBowling ? pickFor(values.pickedBowler) : values.bowler,
+    ...(typedFirst
+      ? { typedFirst: true }
+      : {
+          striker: teamBatting ? pickFor(values.pickedStriker) : values.striker,
+          nonStriker: teamBatting ? pickFor(values.pickedNonStriker) : values.nonStriker,
+          bowler: teamBowling ? pickFor(values.pickedBowler) : values.bowler,
+        }),
     ...(playing === undefined
       ? {}
       : { team: { id: playing.id, fixtureId: fixture?.id ?? null, xi: xiPlayers.map(({ id, name }) => ({ id, name })) } }),
@@ -290,67 +298,78 @@ function SetupForm({ players, team, fixture }: SetupFormProps) {
 
       <section className="flex flex-col gap-3">
         <TeamCaption prefix={t("setup.batting")} team={teamNames[battingSide]} />
-        {teamBatting ? (
-          <>
-            <XiSelect
-              name="striker"
-              label={t("setup.striker")}
-              value={values.pickedStriker}
-              players={xiPlayers}
-              labels={labels}
-              error={pickError(errors.striker, values.pickedStriker)}
-              onChange={(pickedStriker) => update({ pickedStriker })}
-            />
-            <XiSelect
-              name="nonStriker"
-              label={t("setup.nonStriker")}
-              value={values.pickedNonStriker}
-              players={xiPlayers}
-              labels={labels}
-              error={pickError(errors.nonStriker, values.pickedNonStriker)}
-              onChange={(pickedNonStriker) => update({ pickedNonStriker })}
-            />
-          </>
-        ) : (
-          <>
-            <NameField
-              name="striker"
-              label={t("setup.striker")}
-              value={values.striker}
-              error={errors.striker}
-              list={PLAYERS_LIST_ID}
-              onChange={(striker) => update({ striker })}
-            />
-            <NameField
-              name="nonStriker"
-              label={t("setup.nonStriker")}
-              value={values.nonStriker}
-              error={errors.nonStriker}
-              list={PLAYERS_LIST_ID}
-              onChange={(nonStriker) => update({ nonStriker })}
-            />
-          </>
+        {canTypeFirst && (
+          <ToggleRow
+            label={t("typed.instead", { team: teamNames[battingSide] })}
+            checked={values.typedFirst}
+            onChange={(typedFirst) => update({ typedFirst })}
+          />
         )}
-        <TeamCaption prefix={t("setup.bowling")} team={teamNames[otherSide(battingSide)]} />
-        {teamBowling ? (
-          <XiSelect
-            name="bowler"
-            label={t("setup.bowler")}
-            value={values.pickedBowler}
-            players={xiPlayers}
-            labels={labels}
-            error={pickError(errors.bowler, values.pickedBowler)}
-            onChange={(pickedBowler) => update({ pickedBowler })}
-          />
-        ) : (
-          <NameField
-            name="bowler"
-            label={t("setup.bowler")}
-            value={values.bowler}
-            error={errors.bowler}
-            list={PLAYERS_LIST_ID}
-            onChange={(bowler) => update({ bowler })}
-          />
+        {!typedFirst && (
+          <>
+            {teamBatting ? (
+              <>
+                <XiSelect
+                  name="striker"
+                  label={t("setup.striker")}
+                  value={values.pickedStriker}
+                  players={xiPlayers}
+                  labels={labels}
+                  error={pickError(errors.striker, values.pickedStriker)}
+                  onChange={(pickedStriker) => update({ pickedStriker })}
+                />
+                <XiSelect
+                  name="nonStriker"
+                  label={t("setup.nonStriker")}
+                  value={values.pickedNonStriker}
+                  players={xiPlayers}
+                  labels={labels}
+                  error={pickError(errors.nonStriker, values.pickedNonStriker)}
+                  onChange={(pickedNonStriker) => update({ pickedNonStriker })}
+                />
+              </>
+            ) : (
+              <>
+                <NameField
+                  name="striker"
+                  label={t("setup.striker")}
+                  value={values.striker}
+                  error={errors.striker}
+                  list={PLAYERS_LIST_ID}
+                  onChange={(striker) => update({ striker })}
+                />
+                <NameField
+                  name="nonStriker"
+                  label={t("setup.nonStriker")}
+                  value={values.nonStriker}
+                  error={errors.nonStriker}
+                  list={PLAYERS_LIST_ID}
+                  onChange={(nonStriker) => update({ nonStriker })}
+                />
+              </>
+            )}
+            <TeamCaption prefix={t("setup.bowling")} team={teamNames[otherSide(battingSide)]} />
+            {teamBowling ? (
+              <XiSelect
+                name="bowler"
+                label={t("setup.bowler")}
+                value={values.pickedBowler}
+                players={xiPlayers}
+                labels={labels}
+                error={pickError(errors.bowler, values.pickedBowler)}
+                onChange={(pickedBowler) => update({ pickedBowler })}
+              />
+            ) : (
+              <NameField
+                name="bowler"
+                label={t("setup.bowler")}
+                value={values.bowler}
+                error={errors.bowler}
+                list={PLAYERS_LIST_ID}
+                onChange={(bowler) => update({ bowler })}
+              />
+            )}
+          </>
         )}
         <NameSuggestions id={PLAYERS_LIST_ID} names={players} />
       </section>

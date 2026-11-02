@@ -56,7 +56,7 @@ function LivePanel({ state, innings }: { state: MatchState; innings: InningsStat
           {t("live.inningsBreak")}
         </p>
       )}
-      <ThisOver innings={innings} ballsPerOver={state.rules.ballsPerOver} />
+      {innings.entered !== true && <ThisOver innings={innings} ballsPerOver={state.rules.ballsPerOver} />}
       <Commentary state={state} />
     </div>
   );
