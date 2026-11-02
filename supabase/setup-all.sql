@@ -1765,3 +1765,10 @@ grant execute on function
   public.get_email_invites(),
   public.accept_email_invite(text)
 to authenticated;
+
+-- ==== 20261102000013_typed_innings.sql ====
+alter domain public.match_event_type drop constraint match_event_type_check;
+alter domain public.match_event_type add constraint match_event_type_check check (value in (
+  'match_created', 'player_added', 'innings_started', 'delivery', 'batter_in', 'bowler_changed',
+  'strike_swapped', 'retired', 'settings_changed', 'innings_ended', 'undo', 'correct', 'innings_entered'
+));

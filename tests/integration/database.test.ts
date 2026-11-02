@@ -196,6 +196,14 @@ describe("push_match_events", () => {
     await expectDbError(push("anon", m1, D1, [wire(4)]), /permission denied|not_signed_in/);
   });
 
+  it("accepts a typed-in innings", async () => {
+    const typed = newMatch("typedxyz");
+    const entered = wire(1, "innings_entered", { innings: 2, battingTeam: "B", runs: 140, wickets: 6, legalBalls: 120, bowlers: [{ player: "p3", legalBalls: 24, runs: 30, wickets: 2 }] });
+    expect(await push(A, typed, D1, [entered])).toBe(1);
+    expect(await eventCount(typed.id)).toBe(1);
+    await rpc("service", `delete from public.matches where id = $1`, [typed.id]);
+  });
+
   it("invalid type and too many events", async () => {
     await expectDbError(push(A, m1, D1, [wire(4, "bogus")]), /invalid_event/);
     await expectDbError(push(A, m1, D1, Array.from({ length: 501 }, (_, i) => wire(4 + i))), /too_many_events/);
