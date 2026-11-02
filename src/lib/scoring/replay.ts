@@ -206,8 +206,10 @@ function enterInnings(ctx: Context, event: Extract<MatchEvent, { type: "innings_
     entered: true,
   };
   if (existing === undefined) state.innings.push(innings);
-  ctx.over = null;
-  ctx.lastOverBowlers = [];
+  if (state.innings.at(-1) === innings) {
+    ctx.over = null;
+    ctx.lastOverBowlers = [];
+  }
 
   if (innings.number === 1) {
     innings.ended = enteredEnd(state, event);

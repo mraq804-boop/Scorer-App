@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { runs, startMatch } from "./support/scoring";
-import { openWithTeam } from "./support/team";
+import { openWithTeam, xiGroup } from "./support/team";
 
 function totalSheet(page: Page, team: string) {
   return page.getByRole("dialog", { name: `${team} total` });
@@ -97,4 +97,50 @@ test("a team match offers to type in only the opponent's innings", async ({ page
   await expect(page.getByRole("switch", { name: /^Type in the/ })).toHaveCount(0);
   await page.getByRole("radio", { name: "Bowl", exact: true }).check();
   await expect(page.getByRole("switch", { name: /^Type in the .* total instead$/ })).toBeVisible();
+});
+
+test("undoing the start of a scored match goes back to the start sheet, not the typed total", async ({ page }) => {
+  await startMatch(page);
+  await page.getByTestId("undo").click();
+
+  await expect(page.getByRole("dialog", { name: "Start innings 1" })).toBeVisible();
+  await expect(totalSheet(page, "Lions")).toHaveCount(0);
+});
+
+test("a team match types the opponent's total with our XI bowlers, can fix it before the chase, and never offers to type our own", async ({ page }) => {
+  await openWithTeam(page);
+  await page.getByRole("textbox", { name: "Team B", exact: true }).fill("Tigers");
+  await page.getByRole("radio", { name: "Bowl", exact: true }).check();
+  for (const name of [/^Ali\b/, /^Hamza\b/, /^Usman\b/, /^Bilal\b/]) await xiGroup(page).getByRole("checkbox", { name }).check();
+  await page.getByRole("switch", { name: "Type in the Tigers total instead" }).click();
+  await page.getByRole("button", { name: "Start match" }).click();
+
+  const sheet = totalSheet(page, "Tigers");
+  await expect(sheet).toBeVisible();
+  await sheet.getByRole("button", { name: "Score it ball by ball instead" }).click();
+  await expect(page.getByRole("dialog", { name: "Start innings 1" })).toBeVisible();
+  await page.getByRole("dialog", { name: "Start innings 1" }).getByRole("button", { name: "Type in the Tigers total instead" }).click();
+
+  const totals = sheet.getByRole("group", { name: "Total" });
+  await totals.getByLabel("Runs").fill("60");
+  await totals.getByLabel("Wickets").fill("4");
+  await totals.getByLabel("Overs").fill("10");
+  const row = sheet.getByRole("group", { name: "Bowler 1" });
+  await row.getByLabel("Bowler", { exact: true }).selectOption({ label: "Someone else" });
+  await row.getByLabel(/name/).fill("Guest Bowler");
+  await row.getByLabel("Bowler", { exact: true }).selectOption({ label: "Hamza" });
+  await row.getByLabel("Overs").fill("3");
+  await row.getByLabel("Runs").fill("20");
+  await row.getByLabel("Wickets").fill("2");
+  await sheet.getByRole("button", { name: "Save total" }).click();
+
+  const start = page.getByRole("dialog", { name: "Start innings 2" });
+  await expect(start).toContainText("Target 61");
+  await expect(start.getByRole("button", { name: /^Type in/ })).toHaveCount(0);
+  await start.getByRole("button", { name: "Edit the Tigers total" }).click();
+  await expect(sheet.getByRole("group", { name: "Bowler 1" }).getByLabel("Bowler", { exact: true })).toHaveValue(/.+/);
+  await expect(sheet.getByRole("group", { name: "Bowler 1" }).getByLabel(/name/)).toHaveCount(0);
+  await sheet.getByRole("group", { name: "Total" }).getByLabel("Runs").fill("65");
+  await sheet.getByRole("button", { name: "Save total" }).click();
+  await expect(page.getByRole("dialog", { name: "Start innings 2" })).toContainText("Target 66");
 });

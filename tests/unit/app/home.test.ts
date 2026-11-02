@@ -14,11 +14,11 @@ function match(status: Status, winner?: "A" | "B" | "tie" | null, side: "A" | "B
 }
 
 describe("home sections", () => {
-  it("live holds matches in progress or at the break", () => {
+  it("live holds matches waiting for a typed first innings, in progress or at the break", () => {
     expect(matchSection(match("in_progress"), NOW)).toBe("live");
     expect(matchSection(match("innings_break"), NOW)).toBe("live");
+    expect(matchSection(match("setup"), NOW)).toBe("live");
     expect(matchSection(match("complete"), NOW)).toBe("recent");
-    expect(matchSection(match("setup"), NOW)).toBe("recent");
   });
 
   it("an unfinished match goes stale after 12 hours, and a handed-over match is never live", () => {

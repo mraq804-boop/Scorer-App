@@ -1,5 +1,5 @@
 import { t } from "@/lib/i18n";
-import { allOutWickets, bowlerQuota, formatOvers } from "@/lib/scoring";
+import { allOutWickets, formatOvers } from "@/lib/scoring";
 import type { EnteredBowler, Rules, TeamSide } from "@/lib/scoring";
 
 export const RUNS_MAX = 999;
@@ -38,7 +38,6 @@ export function validateEnteredInnings(form: EnteredForm, rules: Rules, battingT
   const { ballsPerOver } = rules;
   const maxWickets = allOutWickets(rules, battingTeam);
   const maxBalls = rules.oversPerInnings * ballsPerOver;
-  const quotaBalls = bowlerQuota(rules) * ballsPerOver;
 
   const runs = count(form.runs, RUNS_MAX);
   if (runs === null) errors.runs = t("entered.error.runs");
@@ -47,6 +46,7 @@ export function validateEnteredInnings(form: EnteredForm, rules: Rules, battingT
   const legalBalls = oversToBalls(form.overs, ballsPerOver);
   if (legalBalls === null || legalBalls > maxBalls) errors.overs = t("entered.error.overs", { max: formatOvers(maxBalls, ballsPerOver) });
 
+  const bowlerMax = legalBalls !== null && legalBalls <= maxBalls ? legalBalls : maxBalls;
   const bowlers: EnteredBowler[] = [];
   const seen = new Set<string>();
   form.bowlers.forEach((row, index) => {
@@ -56,7 +56,9 @@ export function validateEnteredInnings(form: EnteredForm, rules: Rules, battingT
     else if (seen.has(player)) errors[`${index}.player`] = t("entered.error.sameBowler");
     seen.add(player);
     const balls = oversToBalls(row.overs, ballsPerOver);
-    if (balls === null || balls > quotaBalls) errors[`${index}.overs`] = t("entered.error.bowlerOvers", { max: bowlerQuota(rules) });
+    if (balls === null || balls > bowlerMax) {
+      errors[`${index}.overs`] = t("entered.error.bowlerOvers", { max: formatOvers(bowlerMax, ballsPerOver) });
+    }
     const given = count(row.runs, RUNS_MAX, 0);
     if (given === null) errors[`${index}.runs`] = t("entered.error.runs");
     const taken = count(row.wickets, maxWickets, 0);

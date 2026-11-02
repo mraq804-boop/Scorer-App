@@ -118,7 +118,7 @@ export function EnterInningsSheet({ state, innings, batting, existing, matchTeam
         drafts.push(...choice.drafts);
         return choice.id;
       }
-      if (row.name.trim() === "") return "";
+      if ((xi.length > 0 && row.pick !== SOMEONE_ELSE) || row.name.trim() === "") return "";
       const parsed = nameSchema.safeParse(row.name);
       if (!parsed.success) {
         problems[`${index}.player`] = parsed.error.issues[0]?.message;
@@ -233,7 +233,10 @@ export function EnterInningsSheet({ state, innings, batting, existing, matchTeam
                     variant="ghost"
                     size="icon-lg"
                     aria-label={t("typed.removeBowler", { n: index + 1 })}
-                    onClick={() => setRows((current) => current.filter((_, at) => at !== index))}
+                    onClick={() => {
+                      setRows((current) => current.filter((_, at) => at !== index));
+                      setErrors({});
+                    }}
                   >
                     <X className="size-5" aria-hidden />
                   </Button>

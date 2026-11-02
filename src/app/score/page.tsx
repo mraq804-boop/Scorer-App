@@ -163,8 +163,12 @@ function MatchScreen({ matchId }: { matchId: string }) {
   const starting = !blocked && prompt?.kind === "start_innings" ? prompt.innings : null;
   const startBatting = starting === null ? null : battingSide(state, starting);
   const typable = startBatting !== null && canType(startBatting);
+  const neverStarted = !events.some((event) => event.type === "innings_started");
   const typingStart =
-    typable && (startChoice === "typed" || (startChoice === null && starting === 1 && state.innings.length === 0));
+    typable &&
+    (startChoice === "typed" || (startChoice === null && starting === 1 && state.innings.length === 0 && neverStarted));
+  if (starting === null && startChoice !== null) setStartChoice(null);
+  const typedFirst = starting === 2 && state.innings[0]?.entered === true;
   const typedEdit = editingTyped === null || blocked ? undefined : state.innings.find((candidate) => candidate.number === editingTyped);
   const recordPlay = async (drafts: EventDraft[]) => {
     const joining = joiningXi(drafts, matchTeam);
@@ -286,12 +290,13 @@ function MatchScreen({ matchId }: { matchId: string }) {
           onRecord={recordTyped}
         />
       )}
-      {starting !== null && !typingStart && (
+      {starting !== null && !typingStart && editingTyped === null && (
         <StartInningsSheet
           innings={starting}
           matchTeam={matchTeam}
           {...sheet}
           onTypeIn={typable ? () => setStartChoice("typed") : undefined}
+          onEditTyped={typedFirst ? () => setEditingTyped(1) : undefined}
         />
       )}
       {typedEdit !== undefined && typedEdit.entered === true && (

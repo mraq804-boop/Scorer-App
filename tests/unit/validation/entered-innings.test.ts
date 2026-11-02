@@ -39,6 +39,11 @@ describe("oversToBalls", () => {
 });
 
 describe("validateEnteredInnings", () => {
+  it("lets one bowler bowl more than the usual share, as long as it fits the innings", () => {
+    const result = validateEnteredInnings(form({ bowlers: [{ player: "p-hamza", overs: "6", runs: "40", wickets: "2" }] }), T20, "B");
+    expect(result.ok).toBe(true);
+  });
+
   it("turns the form into totals and bowler figures, skipping blank rows", () => {
     const result = validateEnteredInnings(
       form({ bowlers: [...form().bowlers, { player: "", overs: "", runs: "", wickets: "" }, { player: "p-zain", overs: "1", runs: "", wickets: "" }] }),
@@ -70,8 +75,11 @@ describe("validateEnteredInnings", () => {
 
   it("checks each bowler's row", () => {
     expect(errors(form({ bowlers: [{ player: "", overs: "2", runs: "10", wickets: "1" }] }))["0.player"]).toBe(t("entered.error.pickBowler"));
-    expect(errors(form({ bowlers: [{ player: "p-hamza", overs: "4.1", runs: "10", wickets: "1" }] }))["0.overs"]).toBe(
-      t("entered.error.bowlerOvers", { max: 4 }),
+    expect(errors(form({ bowlers: [{ player: "p-hamza", overs: "19.5", runs: "10", wickets: "1" }] }))["0.overs"]).toBe(
+      t("entered.error.bowlerOvers", { max: "19.4" }),
+    );
+    expect(errors(form({ bowlers: [{ player: "p-hamza", overs: "x", runs: "10", wickets: "1" }] }))["0.overs"]).toBe(
+      t("entered.error.bowlerOvers", { max: "19.4" }),
     );
     expect(errors(form({ bowlers: [{ player: "p-hamza", overs: "2", runs: "x", wickets: "1" }] }))["0.runs"]).toBe(t("entered.error.runs"));
     expect(errors(form({ bowlers: [{ player: "p-hamza", overs: "2", runs: "10", wickets: "11" }] }))["0.wickets"]).toBe(
@@ -84,7 +92,11 @@ describe("validateEnteredInnings", () => {
   it("won't let the bowlers' figures add up to more than the team's", () => {
     const many = { player: "p-hamza", overs: "4", runs: "28", wickets: "4" };
     expect(errors(form({ wickets: "3", bowlers: [many] })).bowlers).toBe(t("entered.error.totalWickets", { n: 3 }));
-    expect(errors(form({ overs: "3", bowlers: [{ ...many, wickets: "1" }] })).bowlers).toBe(t("entered.error.totalOvers", { overs: "3" }));
+    const two = [
+      { player: "p-hamza", overs: "2", runs: "10", wickets: "1" },
+      { player: "p-usman", overs: "2", runs: "10", wickets: "1" },
+    ];
+    expect(errors(form({ overs: "3", bowlers: two })).bowlers).toBe(t("entered.error.totalOvers", { overs: "3" }));
     expect(errors(form({ runs: "20", bowlers: [{ ...many, wickets: "1" }] })).bowlers).toBe(t("entered.error.totalRuns", { n: 20 }));
   });
 });

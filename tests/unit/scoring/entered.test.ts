@@ -114,6 +114,41 @@ describe("editing and undoing a typed innings", () => {
     expect(m.inn.number).toBe(2);
   });
 
+  it("keeps the over being bowled in the chase when the first innings is edited", () => {
+    const m = new TestMatch({ overs: 2, toss: THEY_BAT_FIRST, typedFirst: true });
+    m.enter(1, { runs: 30, wickets: 2, legalBalls: 12 });
+    m.startInnings2(["Ali", "Bilal"], "Kamran");
+    m.over([4, 0]);
+    m.enter(1, { runs: 32, wickets: 2, legalBalls: 12 });
+    m.over([0, 0, 0, 0]);
+
+    expect(m.inn.overs.map((over) => over.index)).toEqual([0]);
+    expect(m.inn.overs[0].balls).toHaveLength(6);
+    expect(m.inn.bowling).toEqual([
+      { playerId: m.id("Kamran"), legalBalls: 6, runs: 4, wickets: 0, wides: 0, noBalls: 0, maidens: 0, dots: 5 },
+    ]);
+  });
+
+  it("says how a typed innings ended", () => {
+    const allOut = new TestMatch({ overs: 2, toss: THEY_BAT_FIRST, typedFirst: true });
+    allOut.enter(1, { runs: 30, wickets: 10, legalBalls: 9 });
+    expect(allOut.state.innings[0].ended).toBe("all_out");
+
+    const overs = new TestMatch({ overs: 2, toss: THEY_BAT_FIRST, typedFirst: true });
+    overs.enter(1, { runs: 30, wickets: 3, legalBalls: 12 });
+    expect(overs.state.innings[0].ended).toBe("overs");
+
+    const short = new TestMatch({ overs: 2, toss: THEY_BAT_FIRST, typedFirst: true });
+    short.enter(1, { runs: 30, wickets: 3, legalBalls: 9 });
+    expect(short.state.innings[0].ended).toBe("manual");
+
+    const chased = new TestMatch({ overs: 2 });
+    chased.over([1, 1, 1, 1, 1, 1]);
+    chased.endInnings("overs");
+    chased.enter(2, { runs: 7, wickets: 1, legalBalls: 8 });
+    expect(chased.state.innings[1].ended).toBe("target");
+  });
+
   it("undo takes back the latest typed entry", () => {
     const m = new TestMatch({ overs: 1 });
     m.over([1, 1, 1, 1, 1, 1]);

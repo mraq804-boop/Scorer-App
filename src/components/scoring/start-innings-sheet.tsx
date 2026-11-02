@@ -39,10 +39,11 @@ type StartInningsSheetProps = {
   busy: boolean;
   undo: ReactNode;
   onTypeIn?: () => void;
+  onEditTyped?: () => void;
   onRecord: (drafts: EventDraft[]) => Promise<boolean>;
 };
 
-export function StartInningsSheet({ state, innings, matchTeam, recent, busy, undo, onTypeIn, onRecord }: StartInningsSheetProps) {
+export function StartInningsSheet({ state, innings, matchTeam, recent, busy, undo, onTypeIn, onEditTyped, onRecord }: StartInningsSheetProps) {
   const [values, setValues] = useState<Values>({ striker: "", nonStriker: "", bowler: "" });
   const [picks, setPicks] = useState<Values>({ striker: "", nonStriker: "", bowler: "" });
   const [errors, setErrors] = useState<Partial<Record<Field, string>>>({});
@@ -168,6 +169,11 @@ export function StartInningsSheet({ state, innings, matchTeam, recent, busy, und
           </Button>
         </form>
         <DrawerFooter>
+          {onEditTyped !== undefined && (
+            <Button variant="outline" disabled={busy} onClick={onEditTyped} className="h-12 rounded-xl text-base font-semibold">
+              <bdi>{t("typed.edit", { team: state.teams[bowling].name })}</bdi>
+            </Button>
+          )}
           {onTypeIn !== undefined && (
             <Button variant="outline" disabled={busy} onClick={onTypeIn} className="h-12 rounded-xl text-base font-semibold">
               <bdi>{t("typed.instead", { team: state.teams[batting].name })}</bdi>

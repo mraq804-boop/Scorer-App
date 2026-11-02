@@ -41,7 +41,10 @@ export function BallListSheet({ state, onClose, onSelect }: BallListSheetProps) 
           <DrawerTitle className="text-xl font-bold">{t("menu.editBall")}</DrawerTitle>
         </DrawerHeader>
         <div className="flex flex-col gap-6 overflow-y-auto px-4 pb-safe">
-          {[...state.innings].reverse().map((innings) => (
+          {[...state.innings]
+            .filter((innings) => innings.entered !== true)
+            .reverse()
+            .map((innings) => (
             <InningsOvers key={innings.number} state={state} innings={innings} onSelect={onSelect} />
           ))}
         </div>

@@ -89,10 +89,12 @@ const BATTING_COLUMNS: readonly Column<BatterLine>[] = [
   { label: t("scorecard.strikeRate"), width: "w-14", value: (line) => strikeRate(line.runs, line.balls).toFixed(2) },
 ];
 
-function bowlingColumns(ballsPerOver: number): Column<BowlerLine>[] {
+const UNKNOWN = "–";
+
+function bowlingColumns(ballsPerOver: number, typed: boolean): Column<BowlerLine>[] {
   return [
     { label: t("scorecard.overs"), width: "w-11", value: (line) => formatOvers(line.legalBalls, ballsPerOver) },
-    { label: t("scorecard.maidens"), width: "w-7", value: (line) => line.maidens },
+    { label: t("scorecard.maidens"), width: "w-7", value: (line) => (typed ? UNKNOWN : line.maidens) },
     { label: t("scorecard.runs"), width: "w-8", value: (line) => line.runs },
     { label: t("scorecard.wickets"), width: "w-7", value: (line) => line.wickets, bold: true },
     {
@@ -100,8 +102,8 @@ function bowlingColumns(ballsPerOver: number): Column<BowlerLine>[] {
       width: "w-12",
       value: (line) => economy(line.runs, line.legalBalls, ballsPerOver).toFixed(2),
     },
-    { label: t("scorecard.wides"), width: "w-7", value: (line) => line.wides },
-    { label: t("scorecard.noBalls"), width: "w-7", value: (line) => line.noBalls },
+    { label: t("scorecard.wides"), width: "w-7", value: (line) => (typed ? UNKNOWN : line.wides) },
+    { label: t("scorecard.noBalls"), width: "w-7", value: (line) => (typed ? UNKNOWN : line.noBalls) },
   ];
 }
 
@@ -163,7 +165,7 @@ function Bowling({ state, innings }: InningsProps) {
       <FigureTable
         labelledBy={id}
         nameLabel={t("scorecard.bowler")}
-        columns={bowlingColumns(state.rules.ballsPerOver)}
+        columns={bowlingColumns(state.rules.ballsPerOver, innings.entered === true)}
         rows={innings.bowling}
         renderName={(line) => <Name className="font-semibold">{playerName(state.players, line.playerId)}</Name>}
       />
