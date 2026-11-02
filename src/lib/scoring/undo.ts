@@ -5,6 +5,7 @@ const UNDO_ANCHORS: ReadonlySet<MatchEvent["type"]> = new Set([
   "retired",
   "innings_ended",
   "innings_started",
+  "innings_entered",
   "settings_changed",
 ]);
 const NEVER_UNDONE: ReadonlySet<MatchEvent["type"]> = new Set(["match_created", "player_added", "undo", "correct"]);

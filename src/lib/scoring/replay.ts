@@ -94,6 +94,9 @@ function apply(ctx: Context, event: MatchEvent): void {
     case "innings_ended":
       endInnings(ctx, event);
       return;
+    case "innings_entered":
+      enterInnings(ctx, event);
+      return;
     default:
       return;
   }
@@ -141,6 +144,80 @@ function endInnings(ctx: Context, event: Extract<MatchEvent, { type: "innings_en
     refreshTarget(ctx);
     return;
   }
+  state.status = "complete";
+  state.result = matchResult(state, innings);
+}
+
+function enteredEnd(state: MatchState, event: Extract<MatchEvent, { type: "innings_entered" }>): InningsState["ended"] {
+  const { rules } = state;
+  if (event.wickets >= allOutWickets(rules, event.battingTeam)) return "all_out";
+  if (event.innings === 2 && state.target !== null && event.runs >= state.target) return "target";
+  if (event.legalBalls >= rules.oversPerInnings * rules.ballsPerOver) return "overs";
+  return "manual";
+}
+
+function enterInnings(ctx: Context, event: Extract<MatchEvent, { type: "innings_entered" }>): void {
+  const { state } = ctx;
+  const first = state.innings.find((innings) => innings.number === 1);
+  const existing = state.innings.find((innings) => innings.number === event.innings);
+  if (existing !== undefined && existing.entered !== true) throw new EngineError("innings_started_twice");
+  if (event.innings === 2) {
+    if (first === undefined || first.ended === null) throw new EngineError("no_innings");
+    if (event.battingTeam === first.battingTeam) throw new EngineError("wrong_side");
+  } else if (existing === undefined && state.innings.length > 0) {
+    throw new EngineError("innings_started_twice");
+  }
+
+  const totals = {
+    runs: event.runs,
+    wickets: event.wickets,
+    legalBalls: event.legalBalls,
+    bowling: event.bowlers.map<BowlerLine>((bowler) => ({
+      playerId: bowler.player,
+      legalBalls: bowler.legalBalls,
+      runs: bowler.runs,
+      wickets: bowler.wickets,
+      wides: 0,
+      noBalls: 0,
+      maidens: 0,
+      dots: 0,
+    })),
+  };
+  if (existing !== undefined) {
+    Object.assign(existing, totals);
+    existing.ended = null;
+  }
+  const innings: InningsState = existing ?? {
+    number: event.innings,
+    battingTeam: event.battingTeam,
+    bowlingTeam: otherSide(event.battingTeam),
+    ...totals,
+    extras: { wides: 0, noBalls: 0, byes: 0, legByes: 0 },
+    striker: null,
+    nonStriker: null,
+    bowler: null,
+    batting: [],
+    fallOfWickets: [],
+    partnerships: [],
+    overs: [],
+    commentary: [],
+    freeHit: false,
+    ended: null,
+    entered: true,
+  };
+  if (existing === undefined) state.innings.push(innings);
+  ctx.over = null;
+  ctx.lastOverBowlers = [];
+
+  if (innings.number === 1) {
+    innings.ended = enteredEnd(state, event);
+    refreshTarget(ctx);
+    const chase = state.innings.find((candidate) => candidate.number === 2);
+    if (chase === undefined) state.status = "innings_break";
+    else if (chase.ended !== null) state.result = matchResult(state, chase);
+    return;
+  }
+  innings.ended = enteredEnd(state, event);
   state.status = "complete";
   state.result = matchResult(state, innings);
 }

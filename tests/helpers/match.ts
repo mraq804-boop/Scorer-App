@@ -22,7 +22,10 @@ type TestMatchOptions = {
   toss?: Toss;
   openers?: [string, string];
   bowler?: string;
+  typedFirst?: boolean;
 };
+
+export type TypedTotal = { runs: number; wickets: number; legalBalls: number; bowlers?: [string, number, number, number][] };
 
 function other(side: TeamSide): TeamSide {
   return side === "A" ? "B" : "A";
@@ -45,6 +48,7 @@ export class TestMatch {
       rules: { ...defaultRules("tape", opts.overs ?? 10), ...opts.rules },
       toss,
     });
+    if (opts.typedFirst === true) return;
     this.addPlayer(striker, battingTeam);
     this.addPlayer(nonStriker, battingTeam);
     this.addPlayer(bowler, other(battingTeam));
@@ -108,6 +112,24 @@ export class TestMatch {
 
   endInnings(reason: "overs" | "all_out" | "target" | "manual"): void {
     this.push({ type: "innings_ended", innings: this.inn.number, reason });
+  }
+
+  enter(innings: 1 | 2, total: TypedTotal, battingTeam?: TeamSide): MatchEvent {
+    const state = this.state;
+    const first = state.innings.find((candidate) => candidate.number === 1);
+    const toss = state.toss ?? { winner: "A", choice: "bat" };
+    const tossBatting = toss.choice === "bat" ? toss.winner : other(toss.winner);
+    const batting = battingTeam ?? (innings === 2 && first !== undefined ? other(first.battingTeam) : tossBatting);
+    for (const [name] of total.bowlers ?? []) this.addPlayer(name, other(batting));
+    return this.push({
+      type: "innings_entered",
+      innings,
+      battingTeam: batting,
+      runs: total.runs,
+      wickets: total.wickets,
+      legalBalls: total.legalBalls,
+      bowlers: (total.bowlers ?? []).map(([name, legalBalls, runs, wickets]) => ({ player: this.id(name), legalBalls, runs, wickets })),
+    });
   }
 
   startInnings2(openers: [string, string], bowler: string): void {

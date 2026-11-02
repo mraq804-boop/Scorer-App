@@ -1,6 +1,6 @@
 import type { BallType, Rules, TeamSide } from "./types";
 
-export type EngineErrorCode = "no_innings" | "innings_started_twice" | "no_striker" | "no_bowler";
+export type EngineErrorCode = "no_innings" | "innings_started_twice" | "no_striker" | "no_bowler" | "wrong_side";
 
 export class EngineError extends Error {
   readonly code: EngineErrorCode;

@@ -15,6 +15,7 @@ export type CorrectionPatch = {
   kind?: BallKind; runs?: number; runsAs?: RunsAs; boundary?: boolean; penalty?: number;
   wicket?: { kind: DismissalKind; fielderName: string | null; fielderId?: string | null };
 };
+export type EnteredBowler = { player: string; legalBalls: number; runs: number; wickets: number };
 export type EventDraft =
   | { type: "match_created"; title: string; teams: Record<TeamSide, { name: string }>; rules: Rules; toss: { winner: TeamSide; choice: "bat" | "bowl" } }
   | { type: "player_added"; player: Player }
@@ -26,6 +27,7 @@ export type EventDraft =
   | { type: "retired"; player: string; how: "hurt" | "out" }
   | { type: "settings_changed"; oversPerInnings?: number; playersPerSide?: Partial<Record<TeamSide, number>>; target?: number | null }
   | { type: "innings_ended"; innings: 1 | 2; reason: "overs" | "all_out" | "target" | "manual" }
+  | { type: "innings_entered"; innings: 1 | 2; battingTeam: TeamSide; runs: number; wickets: number; legalBalls: number; bowlers: EnteredBowler[] }
   | { type: "undo"; targets: string[] }
   | { type: "correct"; target: string; patch: CorrectionPatch };
 export type MatchEvent = EventDraft & { id: string; seq: number; at: string };
@@ -50,7 +52,7 @@ export type InningsState = {
   striker: string | null; nonStriker: string | null; bowler: string | null;
   batting: BatterLine[]; bowling: BowlerLine[]; fallOfWickets: FallOfWicket[];
   partnerships: Partnership[]; overs: OverSummary[]; commentary: CommentaryItem[];
-  freeHit: boolean; ended: null | "overs" | "all_out" | "target" | "manual";
+  freeHit: boolean; ended: null | "overs" | "all_out" | "target" | "manual"; entered?: true;
 };
 export type Result =
   | { kind: "won_by_runs"; winner: TeamSide; runs: number }
