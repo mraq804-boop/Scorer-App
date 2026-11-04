@@ -310,7 +310,9 @@ export function SquadEditor({ client, team, onChanged }: SquadEditorProps) {
     return (
       <PictureInput
         label={label}
+        title={t("brand.adjust.photo")}
         size={PHOTO_SIZE}
+        fill={colour.base}
         onPicked={(blob) => savePhoto(player, blob)}
         onError={setPhotoError}
         className="rounded-full"

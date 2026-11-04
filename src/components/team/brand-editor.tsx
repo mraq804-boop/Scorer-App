@@ -81,7 +81,9 @@ export function BrandEditor({ client, team, onChanged }: BrandEditorProps) {
         <div className="flex min-w-0 flex-col gap-2">
           <PictureInput
             label={t(current === null ? "brand.uploadLogo" : "brand.changeLogo")}
+            title={t("brand.adjust.logo")}
             size={LOGO_SIZE}
+            fill={colour.base}
             onPicked={uploadLogo}
             onError={setError}
             className="h-11 rounded-xl border px-4 text-base font-semibold hover:bg-muted"
