@@ -1,7 +1,7 @@
 "use client";
 
 import { LoaderCircle, Minus, Plus } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useId, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
@@ -53,25 +53,26 @@ type PictureCropSheetProps = {
 
 export function PictureCropSheet({ title, src, image, fill, busy, onCancel, onUse }: PictureCropSheetProps) {
   const keysId = useId();
-  const stage = useRef<HTMLDivElement>(null);
   const pointers = useRef(new Map<number, Point>());
   const [view, setView] = useState<View>(() => initialView(image, CROP_FRAME));
 
   const zoomBy = (step: number) =>
     setView((current) => zoomAt(current, scaleForLevel(zoomLevel(current, image, CROP_FRAME) + step, image, CROP_FRAME), CENTRE, image, CROP_FRAME));
 
-  useEffect(() => {
-    const element = stage.current;
-    if (element === null) return;
-    const wheel = (event: WheelEvent) => {
-      event.preventDefault();
-      const box = element.getBoundingClientRect();
-      const at = { x: event.clientX - box.left - INSET, y: event.clientY - box.top - INSET };
-      setView((current) => zoomAt(current, current.scale * Math.exp(-event.deltaY * WHEEL_SPEED), at, image, CROP_FRAME));
-    };
-    element.addEventListener("wheel", wheel, { passive: false });
-    return () => element.removeEventListener("wheel", wheel);
-  }, [image]);
+  const stage = useCallback(
+    (element: HTMLDivElement | null) => {
+      if (element === null) return;
+      const wheel = (event: WheelEvent) => {
+        event.preventDefault();
+        const box = element.getBoundingClientRect();
+        const at = { x: event.clientX - box.left - INSET, y: event.clientY - box.top - INSET };
+        setView((current) => zoomAt(current, current.scale * Math.exp(-event.deltaY * WHEEL_SPEED), at, image, CROP_FRAME));
+      };
+      element.addEventListener("wheel", wheel, { passive: false });
+      return () => element.removeEventListener("wheel", wheel);
+    },
+    [image],
+  );
 
   const toFrame = (event: PointerEvent<HTMLDivElement>): Point => {
     const box = event.currentTarget.getBoundingClientRect();

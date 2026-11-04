@@ -183,7 +183,9 @@ test("dragging the picture changes what is saved", async ({ page }) => {
 
   await page.getByRole("region", { name: "Team look" }).getByLabel("Upload logo").setInputFiles(await drawPicture(page, RED, BLUE));
   const sheet = page.getByRole("dialog", { name: "Adjust logo" });
-  const box = await sheet.getByRole("group", { name: "Picture position" }).boundingBox();
+  const area = sheet.getByRole("group", { name: "Picture position" });
+  await area.hover({ position: { x: 50, y: 136 } });
+  const box = await area.boundingBox();
   if (box === null) throw new Error("no picture area");
   for (let drag = 0; drag < 3; drag += 1) {
     await page.mouse.move(box.x + 50, box.y + box.height / 2);
@@ -200,6 +202,21 @@ test("dragging the picture changes what is saved", async ({ page }) => {
   ]);
   expectNear(left, RED);
   expectNear(right, RED);
+});
+
+test("the mouse wheel zooms the picture", async ({ page }) => {
+  await signIn(page, team());
+  await stubStorage(page);
+  await page.goto("/team?section=settings");
+
+  await page.getByRole("region", { name: "Team look" }).getByLabel("Upload logo").setInputFiles(picture);
+  const sheet = page.getByRole("dialog", { name: "Adjust logo" });
+  const zoom = sheet.getByRole("slider", { name: "Zoom" });
+  const before = Number(await zoom.inputValue());
+  await sheet.getByRole("group", { name: "Picture position" }).hover();
+  await page.mouse.wheel(0, -300);
+
+  await expect.poll(async () => Number(await zoom.inputValue())).toBeGreaterThan(before);
 });
 
 test("the arrow keys move the picture", async ({ page }) => {
